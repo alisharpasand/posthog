@@ -9,6 +9,18 @@ import dagster
 import pydantic
 from clickhouse_driver import Client
 
+# Pre-warm the HogQL → HogVM bytecode import chain at code-location load time. Compiling a
+# predicate (process_property_removal_per_shard → compile_hogql_predicate) builds the HogQL
+# database, whose virtual-field placeholder replacement lazily does
+# ``from common.hogvm.python.execute import …`` (posthog/hogql/placeholders.py). That import
+# first runs during op execution, when the Dagster run worker can no longer resolve the
+# top-level ``common`` namespace package off sys.path — yielding "No module named 'common'".
+# Importing it here, while the worker is still loading op modules with the repo root resolvable,
+# caches the chain in sys.modules so the op-time lazy import is a cache hit. Regular posthog.*
+# packages already get cached this way; common.hogvm is the only fresh import on the predicate
+# path, so it is the one that breaks without this.
+import posthog.hogql.compiler.bytecode  # noqa: F401
+
 from posthog.clickhouse.adhoc_events_deletion import ADHOC_EVENTS_DELETION_TABLE
 from posthog.clickhouse.cluster import AlterTableMutationRunner, ClickhouseCluster, LightweightDeleteMutationRunner
 from posthog.dags.common import JobOwners
@@ -932,9 +944,12 @@ def finalize_deletion_request(
     else:
         next_status = RequestStatus.COMPLETED
 
+    # Accept FAILED in addition to IN_PROGRESS: when an op fails the failure hook flips the request
+    # to FAILED, so re-running the job from the failed op in Dagster (where load_* is reused and not
+    # re-executed) leaves it FAILED. Allowing FAILED here lets that re-run finalize the request.
     DataDeletionRequest.objects.filter(
         pk=deletion_request.request_id,
-        status=RequestStatus.IN_PROGRESS,
+        status__in=[RequestStatus.IN_PROGRESS, RequestStatus.FAILED],
     ).update(status=next_status, updated_at=timezone.now())
 
     context.log.info(f"Deletion request {deletion_request.request_id} marked as {next_status.value}.")
@@ -948,9 +963,11 @@ def finalize_person_removal(
     """Mark a person_removal request as COMPLETED."""
     from django.utils import timezone
 
+    # Accept FAILED too so a Dagster re-run after a mid-job failure (where the failure hook already
+    # flipped the request to FAILED) can still finalize it. See finalize_deletion_request.
     DataDeletionRequest.objects.filter(
         pk=person_removal.request_id,
-        status=RequestStatus.IN_PROGRESS,
+        status__in=[RequestStatus.IN_PROGRESS, RequestStatus.FAILED],
     ).update(status=RequestStatus.COMPLETED, updated_at=timezone.now())
 
     context.log.info(f"Person removal request {person_removal.request_id} marked as completed.")
