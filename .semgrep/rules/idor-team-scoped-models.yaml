@@ -89,6 +89,7 @@ rules:
                               |CustomerJourney
                               |CustomerProfileConfig
                               |CustomPropertyDefinition
+                              |CustomPropertyValue
                               |DAG
                               |Dashboard
                               |DashboardTemplate
@@ -351,6 +352,7 @@ rules:
                         |CustomerJourney
                         |CustomerProfileConfig
                         |CustomPropertyDefinition
+                        |CustomPropertyValue
                         |DAG
                         |Dashboard
                         |DashboardTemplate
