@@ -69,6 +69,7 @@ the row lists both.
 | chargebee         | HTTP                        | requests + `rest_source.RESTClient`                             | ✅                          |
 | checkout_com      | HTTP                        | requests                                                        | ✅                          |
 | coda              | HTTP                        | requests                                                        | ✅                          |
+| coinmarketcap     | HTTP                        | requests + `rest_source.RESTClient`                             | ✅                          |
 | commercetools     | HTTP                        | requests                                                        | ✅                          |
 | confluence        | HTTP                        | requests                                                        | ✅                          |
 | chartmogul        | HTTP                        | requests                                                        | ✅                          |
@@ -313,7 +314,6 @@ doesn't conflict with concurrent PRs.
 - codefresh
 - coin_api
 - coingecko
-- coinmarketcap
 - concord
 - configcat
 - constant_contact
