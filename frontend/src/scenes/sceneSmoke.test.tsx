@@ -50,14 +50,14 @@ const HIGH_TRAFFIC_SCENES: [name: string, path: string][] = [
 const renderErrors: Error[] = []
 
 class CaptureBoundary extends Component<{ children: ReactNode }, { failed: boolean }> {
-    state = { failed: false }
+    override state = { failed: false }
     static getDerivedStateFromError(): { failed: boolean } {
         return { failed: true }
     }
-    componentDidCatch(error: Error): void {
+    override componentDidCatch(error: Error): void {
         renderErrors.push(error)
     }
-    render(): ReactNode {
+    override render(): ReactNode {
         return this.state.failed ? null : this.props.children
     }
 }
