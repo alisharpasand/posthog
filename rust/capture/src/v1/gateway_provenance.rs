@@ -172,16 +172,17 @@ pub fn nonce_key(token: &str, request_id: &str) -> String {
 }
 
 /// Records the request_id as a single-use nonce and reports whether it was
-/// already seen (a replay). An empty request_id can't be deduped, so it's never
-/// a replay. A Redis error fails open (not a replay) so a blip can't strip the
-/// marker off legitimate gateway events and double-bill them.
+/// already seen (a replay). An empty request_id can't be deduped, so it offers no
+/// replay protection and is treated as a replay (untrusted) rather than a
+/// perpetual first sighting. A Redis error fails open (not a replay) so a blip
+/// can't strip the marker off legitimate gateway events and double-bill them.
 pub async fn is_replay(
     redis: &Arc<dyn Client + Send + Sync>,
     token: &str,
     request_id: &str,
 ) -> bool {
     if request_id.is_empty() {
-        return false;
+        return true;
     }
     match redis
         .set_nx_ex(
@@ -195,6 +196,21 @@ pub async fn is_replay(
         Ok(false) => true, // already recorded — replay
         Err(_) => false,   // store unavailable — fail open
     }
+}
+
+/// Test-only: produce a valid signature over the canonical tuple, so sibling
+/// modules can build gateway-signed fixtures without duplicating the encoding.
+#[cfg(test)]
+pub fn sign_for_test(
+    secret: &[u8],
+    token: &str,
+    distinct_id: &str,
+    request_id: &str,
+    signed_at: &str,
+) -> String {
+    let mut mac = HmacSha256::new_from_slice(secret).expect("valid HMAC key");
+    mac.update(&canonical(&[token, distinct_id, request_id, signed_at]));
+    hex::encode(mac.finalize().into_bytes())
 }
 
 #[cfg(test)]
@@ -437,9 +453,11 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn empty_request_id_is_never_a_replay() {
+    async fn empty_request_id_is_treated_as_a_replay() {
+        // An empty nonce can't be deduped, so it's untrusted: treated as a replay
+        // without touching Redis (the mock has no set_nx_ex configured).
         let redis = mock(common_redis::MockRedisClient::new());
-        assert!(!is_replay(&redis, TOKEN, "").await);
+        assert!(is_replay(&redis, TOKEN, "").await);
     }
 
     #[tokio::test]

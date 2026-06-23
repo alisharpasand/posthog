@@ -663,11 +663,14 @@ use crate::v1::sinks::{self as v1_sinks, SinkName};
 pub struct TestState {
     pub state: router::State,
     pub mock_producer: Arc<MockProducer>,
+    pub mock_redis: Arc<MockRedisClient>,
 }
 
 /// Builder for `router::State` with configurable mock services.
 pub struct TestStateBuilder {
     quota_limited: bool,
+    ai_gateway_signing_secret: Option<String>,
+    set_nx_ex_rets: Vec<(String, Result<bool, common_redis::CustomRedisError>)>,
     overflow_limiter: Option<(NonZeroU32, NonZeroU32)>,
     historical_threshold_days: Option<i64>,
     restriction_service: Option<EventRestrictionService>,
@@ -685,6 +688,8 @@ impl TestStateBuilder {
     pub fn new() -> Self {
         Self {
             quota_limited: false,
+            ai_gateway_signing_secret: None,
+            set_nx_ex_rets: Vec::new(),
             overflow_limiter: None,
             historical_threshold_days: None,
             restriction_service: None,
@@ -696,6 +701,22 @@ impl TestStateBuilder {
     /// Configure quota limiter to reject all events for any token.
     pub fn with_quota_limited(mut self) -> Self {
         self.quota_limited = true;
+        self
+    }
+
+    /// Set the AI-gateway signing secret used by gateway provenance verification.
+    pub fn with_ai_gateway_signing_secret(mut self, secret: &str) -> Self {
+        self.ai_gateway_signing_secret = Some(secret.to_string());
+        self
+    }
+
+    /// Stub a `set_nx_ex` return for a specific key (e.g. a gateway nonce).
+    pub fn with_set_nx_ex_ret(
+        mut self,
+        key: &str,
+        ret: Result<bool, common_redis::CustomRedisError>,
+    ) -> Self {
+        self.set_nx_ex_rets.push((key.to_string(), ret));
         self
     }
 
@@ -741,8 +762,8 @@ impl TestStateBuilder {
         handle.report_healthy();
         let _monitor = manager.monitor_background();
 
-        let redis: Arc<dyn common_redis::Client + Send + Sync> = if self.quota_limited {
-            let mut mock = MockRedisClient::new();
+        let mut mock = MockRedisClient::new();
+        if self.quota_limited {
             for resource in &[
                 QuotaResource::Events,
                 QuotaResource::Recordings,
@@ -754,10 +775,12 @@ impl TestStateBuilder {
                 // Return a wildcard token so every token is limited
                 mock = mock.zrangebyscore_ret(&key, vec!["*".to_string()]);
             }
-            Arc::new(mock)
-        } else {
-            Arc::new(MockRedisClient::new())
-        };
+        }
+        for (key, ret) in &self.set_nx_ex_rets {
+            mock = mock.set_nx_ex_ret(key, ret.clone());
+        }
+        let mock_redis = Arc::new(mock);
+        let redis: Arc<dyn common_redis::Client + Send + Sync> = mock_redis.clone();
 
         // CaptureQuotaLimiter needs a Config — build a minimal one via envconfig
         let cfg_env: HashMap<String, String> = [
@@ -835,12 +858,13 @@ impl TestStateBuilder {
             replay_overflow_limiter: None,
             v1_sink_router: Some(Arc::new(v1_router)),
             capture_v1_scatter_gather_min_batch: 8,
-            ai_gateway_signing_secret: None,
+            ai_gateway_signing_secret: self.ai_gateway_signing_secret,
         };
 
         TestState {
             state,
             mock_producer,
+            mock_redis,
         }
     }
 }

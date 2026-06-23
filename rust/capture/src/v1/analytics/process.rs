@@ -149,31 +149,36 @@ async fn apply_gateway_provenance(
     let now = context.server_received_at;
     let sig = context.gateway_signature.as_ref();
 
+    // request_id is a per-request single-use nonce, so the replay check is
+    // per-request, not per-event: every $ai_* event in this request shares the one
+    // request_id, and checking per event would consume the nonce on the first
+    // event and flag every sibling as a replay. A replayed (or undedup-able,
+    // empty) nonce taints the whole request.
+    let replayed = match (secret, sig) {
+        (Some(_), Some(sig)) => {
+            gp::is_replay(&state.redis, &context.api_token, &sig.request_id).await
+        }
+        _ => false,
+    };
+
     for ev in events.iter_mut() {
         if ev.result != EventResult::Ok || !ev.event.event.starts_with("$ai_") {
             continue;
         }
 
-        let mut trusted = match (secret, sig) {
-            (Some(secret), Some(sig)) => gp::verify(
-                secret.as_bytes(),
-                &context.api_token,
-                &ev.event.distinct_id,
-                sig,
-                now,
-            ),
-            _ => false,
-        };
-
-        // A valid, fresh signature is single-use: a replayed request_id within the
-        // freshness window must not mark further events verified.
-        if trusted {
-            if let Some(sig) = sig {
-                if gp::is_replay(&state.redis, &context.api_token, &sig.request_id).await {
-                    trusted = false;
-                }
-            }
-        }
+        // verify is per-event: the signature binds distinct_id, which can legitimately
+        // differ across events in one batch.
+        let trusted = !replayed
+            && match (secret, sig) {
+                (Some(secret), Some(sig)) => gp::verify(
+                    secret.as_bytes(),
+                    &context.api_token,
+                    &ev.event.distinct_id,
+                    sig,
+                    now,
+                ),
+                _ => false,
+            };
 
         if trusted {
             if let Some(props) = gp::stamp_verified_raw(&ev.event.properties) {
@@ -2846,5 +2851,65 @@ mod tests {
         brotli::BrotliDecompress(&mut std::io::Cursor::new(&compressed), &mut decompressed)
             .unwrap();
         assert_eq!(decompressed, raw);
+    }
+
+    // --- apply_gateway_provenance: per-request replay check ---
+
+    #[tokio::test]
+    async fn gateway_replay_check_is_per_request_not_per_event() {
+        use crate::v1::gateway_provenance as gp;
+
+        let secret = "test-signing-secret";
+        let token = "phc_test";
+        let distinct_id = "user-shared";
+        let request_id = "req-batch-1";
+        let signed_at = "2026-03-19T14:30:00Z";
+        let now = dt(signed_at);
+
+        // First sighting of the nonce — verify() then a single is_replay() must
+        // trust the whole batch. The mock isn't stateful, so a per-event check
+        // (the regression) would record set_nx_ex twice; the call-count assertion
+        // is what catches it.
+        let test_state = test_utils::TestStateBuilder::new()
+            .with_ai_gateway_signing_secret(secret)
+            .with_set_nx_ex_ret(&gp::nonce_key(token, request_id), Ok(true))
+            .build();
+        let state = test_state.state;
+
+        let mut ctx = test_utils::test_analytics_context();
+        ctx.req.api_token = token.to_string();
+        ctx.req.server_received_at = now;
+        ctx.req.gateway_signature = Some(gp::GatewaySignature {
+            signature: gp::sign_for_test(
+                secret.as_bytes(),
+                token,
+                distinct_id,
+                request_id,
+                signed_at,
+            ),
+            signed_at: signed_at.to_string(),
+            request_id: request_id.to_string(),
+        });
+
+        let mut events = vec![
+            wrapped_event("$ai_generation", distinct_id),
+            wrapped_event("$ai_generation", distinct_id),
+        ];
+        apply_gateway_provenance(&state, &ctx, &mut events).await;
+
+        assert!(
+            events.iter().all(|e| e.is_gateway_verified),
+            "every $ai_* event sharing one request's signature must stay verified"
+        );
+        let nonce_calls = test_state
+            .mock_redis
+            .get_calls()
+            .iter()
+            .filter(|c| c.op == "set_nx_ex")
+            .count();
+        assert_eq!(
+            nonce_calls, 1,
+            "the per-request nonce must be checked once, not once per event"
+        );
     }
 }
