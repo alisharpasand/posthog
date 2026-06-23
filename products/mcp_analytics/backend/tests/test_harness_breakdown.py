@@ -1,4 +1,5 @@
 import re
+import pathlib
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
@@ -28,6 +29,18 @@ def test_harness_labels_tuple_matches_multiif_branches() -> None:
     sql = mcp_harness.harness_label_sql("h")
     emitted = set(re.findall(r"'([^']+)',\s*$", sql, re.MULTILINE)) | {"Other"}
     assert emitted == set(mcp_harness.HARNESS_LABELS)
+
+
+def test_frontend_registry_categories_are_backend_labels() -> None:
+    # The dashboard registry keys logos/colours by the label the backend emits.
+    # Every registry category must be a real backend label, or a logo points at a
+    # harness the runner will never produce.
+    registry = (
+        pathlib.Path(__file__).resolve().parents[2] / "frontend" / "dashboard" / "harnessRegistry.ts"
+    ).read_text()
+    categories = set(re.findall(r"category:\s*'([^']+)'", registry))
+    unknown = categories - set(mcp_harness.HARNESS_LABELS)
+    assert not unknown, f"registry categories not emitted by the backend: {sorted(unknown)}"
 
 
 class TestMCPHarnessBreakdownQueryRunner(_MCPAnalyticsTeamScopedTestMixin, ClickhouseTestMixin, APIBaseTest):
