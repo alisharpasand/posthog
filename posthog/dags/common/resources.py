@@ -92,8 +92,11 @@ class OpsClickhouseClusterResource(dagster.ConfigurableResource):
     max_execution_time: int
     max_memory_usage: int
 
-    host: str = settings.CLICKHOUSE_HOST
-    cluster: str | None = None
+    # The ops cluster is only discoverable from the migrations host/cluster: satellite discovery runs
+    # clusterAllReplicas(ops, system.clusters) WHERE cluster = <migrations cluster>, which the default
+    # app host doesn't know about. This mirrors get_migrations_cluster, the path migrations use to reach OPS.
+    host: str = settings.CLICKHOUSE_MIGRATIONS_HOST
+    cluster: str = settings.CLICKHOUSE_MIGRATIONS_CLUSTER
 
     def create_resource(self, context: dagster.InitResourceContext) -> ClickhouseCluster:
         return get_cluster(
