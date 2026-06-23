@@ -31,7 +31,7 @@ import { urls } from 'scenes/urls'
 import { hogql } from '~/queries/utils'
 import { DateMappingOption } from '~/types'
 
-import { renderHogFunctionMessage } from '../logs/HogFunctionLogs'
+import { renderHogFunctionMessage } from '../logs/renderHogFunctionMessage'
 import { LogsViewer } from '../logs/LogsViewer'
 import { LogsViewerLogicProps } from '../logs/logsViewerLogic'
 import {

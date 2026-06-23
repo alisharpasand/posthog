@@ -223,7 +223,7 @@ export const resolveDateRange = (filters: {
     if (relHours !== null) {
         return { start: end.subtract(relHours, 'hour'), end }
     }
-    const start = dateStringToDayJs(filters.date_from) ?? end.subtract(24, 'hour')
+    const start = dateStringToDayJs(filters.date_from ?? null) ?? end.subtract(24, 'hour')
     return { start, end }
 }
 
