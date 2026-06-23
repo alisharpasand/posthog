@@ -17,6 +17,19 @@ from posthog.hogql.parser import parse_expr
 
 from posthog.models.utils import UUIDT
 
+_ROUNDTRIP_IDENTIFIER_SAMPLES = [
+    "back`tick",
+    "a``b",
+    "`leading",
+    "trailing`",
+    "``",
+    "a\\b",
+    "a\\`b",
+    "`a\\`b`",
+    "with space",
+    "a.b.c",
+]
+
 
 class TestPrintString(BaseTest):
     def test_sanitize_hogql_identifier(self):
@@ -57,30 +70,18 @@ class TestPrintString(BaseTest):
 
     @parameterized.expand(
         [
-            (f"{label}-{backend}", escape_fn, backend)
+            (f"{label}-{backend}-{i}", escape_fn, backend, sample)
             for label, escape_fn in [("hogql", escape_hogql_identifier), ("clickhouse", escape_clickhouse_identifier)]
             for backend in ["rust-py", "cpp-json"]
+            for i, sample in enumerate(_ROUNDTRIP_IDENTIFIER_SAMPLES)
         ]
     )
-    def test_identifier_roundtrips_through_production_parser(self, _name, escape_fn, backend):
+    def test_identifier_roundtrips_through_production_parser(self, _name, escape_fn, backend, identifier):
         # Round-trips through the real parsers, not the lenient parse_string_literal_text; the clickhouse case still parses via the HogQL parser (shared grammar), not ClickHouse itself.
-        samples = [
-            "back`tick",
-            "a``b",
-            "`leading",
-            "trailing`",
-            "``",
-            "a\\b",
-            "a\\`b",
-            "`a\\`b`",
-            "with space",
-            "a.b.c",
-        ]
-        for s in samples:
-            escaped = escape_fn(s)
-            node = parse_expr(escaped, backend=backend)
-            assert isinstance(node, ast.Field), f"{s!r} escaped to {escaped!r} did not parse to a Field"
-            self.assertEqual(node.chain, [s], f"{s!r} escaped to {escaped!r} did not round-trip")
+        escaped = escape_fn(identifier)
+        node = parse_expr(escaped, backend=backend)
+        assert isinstance(node, ast.Field), f"{identifier!r} escaped to {escaped!r} did not parse to a Field"
+        self.assertEqual(node.chain, [identifier], f"{identifier!r} escaped to {escaped!r} did not round-trip")
 
     def test_sanitize_postgres_identifier(self):
         self.assertEqual(escape_postgres_identifier("a"), "a")
