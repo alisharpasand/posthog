@@ -63,6 +63,10 @@ pub async fn process_batch(
         return Ok(BatchResponse::build(context, &events));
     }
 
+    // Verify gateway provenance before the quota limiter so verified events can
+    // be exempted from the llm_events meter (they're wallet-billed, not AIO).
+    apply_gateway_provenance(state, context, &mut events);
+
     crate::v1::quota_limiter_shim::apply_quota_limits(
         &state.quota_limiter,
         &context.api_token,
@@ -122,6 +126,51 @@ pub async fn process_batch(
     merge_sink_results(&mut events, &all_results);
 
     Ok(BatchResponse::build(context, &events))
+}
+
+// Verifies the gateway provenance signature on `$ai_*` events. A valid, fresh
+// signature stamps the trusted `$ai_gateway_verified` and marks the event for
+// quota exemption; anything else (no secret, no/invalid signature) has its
+// `$ai_gateway*` props stripped so a forged marker can't reach billing. Only
+// `$ai_*` events are considered — the only namespace the llm_events meter counts
+// — and the strip path skips the parse unless the raw props plausibly carry a
+// gateway key, so ordinary traffic stays off the parse hot path.
+fn apply_gateway_provenance(state: &router::State, context: &Context, events: &mut [WrappedEvent]) {
+    use crate::v1::gateway_provenance as gp;
+
+    let secret = state
+        .ai_gateway_signing_secret
+        .as_deref()
+        .filter(|s| !s.is_empty());
+    let now = context.server_received_at;
+
+    for ev in events.iter_mut() {
+        if ev.result != EventResult::Ok || !ev.event.event.starts_with("$ai_") {
+            continue;
+        }
+
+        let verified = match (secret, context.gateway_signature.as_ref()) {
+            (Some(secret), Some(sig)) => gp::verify(
+                secret.as_bytes(),
+                &context.api_token,
+                &ev.event.distinct_id,
+                sig,
+                now,
+            ),
+            _ => false,
+        };
+
+        if verified {
+            if let Some(props) = gp::stamp_verified_raw(&ev.event.properties) {
+                ev.event.properties = props;
+                ev.is_gateway_verified = true;
+            }
+        } else if gp::has_gateway_props(&ev.event.properties) {
+            if let Some(props) = gp::strip_gateway_raw(&ev.event.properties) {
+                ev.event.properties = props;
+            }
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -222,6 +271,7 @@ fn validate_events(context: &RequestContext, batch: Batch) -> Result<Vec<Wrapped
                     },
                     destination,
                     force_disable_person_processing: illegal,
+                    is_gateway_verified: false,
                 });
             }
             Err(err) => {
@@ -233,6 +283,7 @@ fn validate_events(context: &RequestContext, batch: Batch) -> Result<Vec<Wrapped
                     details: Some(err.tag()),
                     destination,
                     force_disable_person_processing: false,
+                    is_gateway_verified: false,
                 });
             }
         }
@@ -1013,6 +1064,7 @@ mod tests {
             created_at: None,
             capture_internal: false,
             historical_migration: false,
+            gateway_signature: None,
         }
     }
 
