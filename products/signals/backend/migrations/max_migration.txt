@@ -1,1 +1,1 @@
-0036_signalteamconfig_backfill_default_autostart_p2
+0048_signalreportartefact_latest_index
