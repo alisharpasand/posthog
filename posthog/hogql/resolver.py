@@ -115,6 +115,11 @@ assert POSTGRES_KEYWORD_TYPES.keys() == ast.VALID_KEYWORD_NAMES, (
 # takes the PG code path in the resolver.
 _POSTGRES_FAMILY: frozenset[HogQLDialect] = frozenset({"postgres", "duckdb"})
 
+# Dialects whose target databases support PIVOT / UNPIVOT natively. "hogql" is included so the
+# canonical round-trip (used for `self.hogql` display) doesn't reject a query before the target
+# dialect runs.
+_PIVOT_DIALECTS: frozenset[HogQLDialect] = frozenset({"postgres", "duckdb", "snowflake", "hogql"})
+
 
 def resolve_constant_data_type(constant: Any) -> ConstantType:
     if constant is None:
@@ -338,7 +343,7 @@ class Resolver(CloningVisitor):
         return result
 
     def visit_unpivot_expr(self, node: ast.UnpivotExpr):
-        if self.dialect not in _POSTGRES_FAMILY:
+        if self.dialect not in _PIVOT_DIALECTS:
             raise QueryError(f"UNPIVOT is not allowed in {self.dialect} dialect")
 
         node = cast(ast.UnpivotExpr, clone_expr(node))
@@ -525,7 +530,7 @@ class Resolver(CloningVisitor):
             self.scopes.pop()
 
     def visit_pivot_expr(self, node: ast.PivotExpr):
-        if self.dialect not in _POSTGRES_FAMILY:
+        if self.dialect not in _PIVOT_DIALECTS:
             raise QueryError(f"PIVOT is not allowed in {self.dialect} dialect")
 
         node = cast(ast.PivotExpr, clone_expr(node))
