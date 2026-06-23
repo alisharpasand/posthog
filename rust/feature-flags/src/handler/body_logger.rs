@@ -366,7 +366,7 @@ mod tests {
                 version: 1,
                 description: None,
                 payload: None,
-                has_experiment: false,
+                has_experiment: Some(false),
             },
             conditions: None,
         }

@@ -440,10 +440,11 @@ pub struct FlagDetailsMetadata {
     pub version: i32,
     pub description: Option<String>,
     pub payload: Option<Value>,
-    /// True if the flag has at least one non-deleted linked experiment. SDKs use this to
-    /// decide whether to keep all $feature_flag_called event properties or send a minimal event.
+    /// Tri-state experiment linkage mirrored from `FeatureFlag::has_experiment` (see there for
+    /// the full contract). `null` is emitted explicitly; SDKs treat `null`/`true` as "preserve
+    /// all $feature_flag_called properties" and only `false` permits sending a minimal event.
     #[serde(default)]
-    pub has_experiment: bool,
+    pub has_experiment: Option<bool>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
@@ -1050,7 +1051,7 @@ mod tests {
                     version: 1,
                     description: None,
                     payload: Some(json!({"key": "value"})),
-                    has_experiment: false,
+                    has_experiment: Some(false),
                 },
                 conditions: None,
             },
@@ -1074,7 +1075,7 @@ mod tests {
                     version: 1,
                     description: None,
                     payload: None,
-                    has_experiment: false,
+                    has_experiment: Some(false),
                 },
                 conditions: None,
             },
@@ -1098,7 +1099,7 @@ mod tests {
                     version: 1,
                     description: None,
                     payload: Some(Value::Null),
-                    has_experiment: false,
+                    has_experiment: Some(false),
                 },
                 conditions: None,
             },

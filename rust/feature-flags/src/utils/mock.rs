@@ -319,7 +319,7 @@ mod tests {
             name: Some("Test Flag".to_string()),
             id: 1,
             key: "test_flag".to_string(),
-            has_experiment: false,
+            has_experiment: None,
             active: true,
             deleted: false,
             team_id: 99,

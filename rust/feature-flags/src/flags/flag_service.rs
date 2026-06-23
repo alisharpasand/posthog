@@ -431,7 +431,7 @@ mod tests {
                 team_id: team.id,
                 name: Some("Beta Feature".to_string()),
                 key: "beta_feature".to_string(),
-                has_experiment: false,
+                has_experiment: Some(false),
                 filters: FlagFilters {
                     groups: vec![FlagPropertyGroup {
                         properties: Some(vec![PropertyFilter {
@@ -469,7 +469,7 @@ mod tests {
                 team_id: team.id,
                 name: Some("New User Interface".to_string()),
                 key: "new_ui".to_string(),
-                has_experiment: false,
+                has_experiment: Some(false),
                 filters: FlagFilters {
                     groups: vec![],
                     multivariate: None,
@@ -493,7 +493,7 @@ mod tests {
                 team_id: team.id,
                 name: Some("Premium Feature".to_string()),
                 key: "premium_feature".to_string(),
-                has_experiment: false,
+                has_experiment: Some(false),
                 filters: FlagFilters {
                     groups: vec![FlagPropertyGroup {
                         properties: Some(vec![PropertyFilter {
@@ -625,7 +625,7 @@ mod tests {
                 team_id: team.id,
                 name: Some(format!("Test Flag {i} with a longer name for size")),
                 key: format!("test_flag_{i}_with_extra_chars_for_larger_payload"),
-                has_experiment: false,
+                has_experiment: Some(false),
                 deleted: false,
                 active: i % 2 == 0,
                 filters: FlagFilters {

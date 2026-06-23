@@ -334,7 +334,7 @@ async fn test_evaluate_feature_flags_with_errors() {
                 version: 1,
                 description: None,
                 payload: None,
-                has_experiment: false,
+                has_experiment: None,
             },
             conditions: None,
         }
@@ -803,7 +803,7 @@ async fn test_evaluate_feature_flags_details() {
                 version: 1,
                 description: None,
                 payload: None,
-                has_experiment: false,
+                has_experiment: None,
             },
             conditions: None,
         }
@@ -825,7 +825,7 @@ async fn test_evaluate_feature_flags_details() {
                 version: 1,
                 description: None,
                 payload: None,
-                has_experiment: false,
+                has_experiment: None,
             },
             conditions: None,
         }

@@ -16,8 +16,7 @@ use crate::flags::flag_matching_utils::{
     should_write_hash_key_override,
 };
 use crate::flags::flag_models::{
-    default_has_experiment, FeatureFlag, FeatureFlagId, FeatureFlagList, FlagFilters,
-    FlagPropertyGroup,
+    FeatureFlag, FeatureFlagId, FeatureFlagList, FlagFilters, FlagPropertyGroup,
 };
 use crate::flags::flag_operations::flags_require_db_preparation;
 use crate::handler::canonical_log::{install_rayon_canonical_log, take_rayon_canonical_log};
@@ -1193,8 +1192,8 @@ impl FeatureFlagMatcher {
                 let stub = FeatureFlag {
                     id: snapshot.id,
                     key: snapshot.key,
-                    // Panic fallback can't compute experiment linkage; use the shared default.
-                    has_experiment: default_has_experiment(),
+                    // Panic fallback can't compute experiment linkage.
+                    has_experiment: None,
                     active: true,
                     version: snapshot.version,
                     filters: FlagFilters::default(),

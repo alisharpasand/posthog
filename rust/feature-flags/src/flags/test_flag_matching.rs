@@ -4354,7 +4354,7 @@ mod tests {
             team_id: team.id,
             name: Some("Beta feature".to_string()),
             key: "beta-feature".to_string(),
-            has_experiment: false,
+            has_experiment: Some(false),
             filters: FlagFilters {
                 groups: vec![FlagPropertyGroup {
                     properties: None,
@@ -5674,7 +5674,7 @@ mod tests {
             team_id: team.id,
             name: Some("Test Order Flag".to_string()),
             key: "test_order_flag".to_string(),
-            has_experiment: false,
+            has_experiment: Some(false),
             filters: FlagFilters {
                 groups: vec![
                     FlagPropertyGroup {

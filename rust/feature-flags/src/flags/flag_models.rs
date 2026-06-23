@@ -280,24 +280,16 @@ pub struct FeatureFlag {
     pub evaluation_tags: Option<Vec<String>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub bucketing_identifier: Option<String>,
-    /// True if the flag has at least one non-deleted linked experiment. Surfaced to
-    /// SDKs via FlagDetailsMetadata so they can decide whether to keep or strip
-    /// $feature_flag_called event properties.
-    ///
-    /// Defaults to `true` (rather than the usual `#[serde(default)]` bool false) so cache
-    /// entries written by older Django without the field over-preserve properties instead of
-    /// stripping them. A spurious `true` only wastes bytes; a spurious `false` would strip
-    /// unrecoverable experiment-exposure data. The fallback query paths share this default via
-    /// `default_has_experiment()`.
-    #[serde(default = "default_has_experiment")]
-    pub has_experiment: bool,
-}
-
-/// Default for `FeatureFlag::has_experiment` when experiment linkage is unknowable — an
-/// older-Django cache payload missing the field, or a fallback query path that can't compute
-/// it. See the field doc for why this is `true` rather than `false`.
-pub(crate) fn default_has_experiment() -> bool {
-    true
+    /// Tri-state experiment linkage, surfaced to SDKs via FlagDetailsMetadata so they can
+    /// decide whether to keep or strip $feature_flag_called event properties:
+    /// - `Some(true)`  — the flag has at least one non-deleted linked experiment.
+    /// - `Some(false)` — the flag definitively has no live experiment.
+    /// - `None`        — unknown. A cache entry written before the producer stamped the field
+    ///   (pre-rollout only) deserializes here. SDKs must treat `None` like the old `true`
+    ///   default and preserve properties, since stripping experiment-exposure data is
+    ///   unrecoverable; only `Some(false)` permits stripping.
+    #[serde(default)]
+    pub has_experiment: Option<bool>,
 }
 
 impl FeatureFlag {
@@ -330,6 +322,9 @@ pub struct FeatureFlagRow {
     pub evaluation_tags: Option<Vec<String>>,
     #[serde(default)]
     pub bucketing_identifier: Option<String>,
+    /// Computed by the from_pg fallback query via a correlated EXISTS over posthog_experiment.
+    #[serde(default)]
+    pub has_experiment: bool,
 }
 
 /// Request-scoped view of flag definitions plus the per-request filter set.
@@ -956,5 +951,52 @@ mod skip_serializing_if_tests {
         let wrapper: HypercacheFlagsWrapper = serde_json::from_value(input).unwrap();
         let output = serde_json::to_value(&wrapper).unwrap();
         assert!(output["cohorts"].is_array());
+    }
+}
+
+#[cfg(test)]
+mod has_experiment_tristate_tests {
+    //! Guards the tri-state contract for `FeatureFlag::has_experiment`. A cache payload
+    //! written before the producer stamped the field must deserialize to `None` (not the
+    //! old `true` default) and serialize back to an explicit JSON `null`, so consumers can
+    //! distinguish "unknown" from "yes".
+    use super::*;
+
+    fn flag_json(has_experiment: Option<serde_json::Value>) -> serde_json::Value {
+        let mut json = serde_json::json!({
+            "id": 1,
+            "team_id": 1,
+            "key": "my-flag",
+            "filters": {}
+        });
+        if let Some(value) = has_experiment {
+            json["has_experiment"] = value;
+        }
+        json
+    }
+
+    #[test]
+    fn missing_has_experiment_deserializes_to_none_and_serializes_to_null() {
+        let flag: FeatureFlag = serde_json::from_value(flag_json(None))
+            .expect("FeatureFlag should deserialize without has_experiment");
+        assert_eq!(flag.has_experiment, None);
+
+        let output = serde_json::to_value(&flag).expect("FeatureFlag should serialize");
+        assert!(
+            output["has_experiment"].is_null(),
+            "missing has_experiment must serialize to explicit null, got {}",
+            output["has_experiment"]
+        );
+    }
+
+    #[test]
+    fn explicit_has_experiment_round_trips() {
+        for value in [true, false] {
+            let flag: FeatureFlag =
+                serde_json::from_value(flag_json(Some(serde_json::json!(value)))).unwrap();
+            assert_eq!(flag.has_experiment, Some(value));
+            let output = serde_json::to_value(&flag).unwrap();
+            assert_eq!(output["has_experiment"], serde_json::json!(value));
+        }
     }
 }
