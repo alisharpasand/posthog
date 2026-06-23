@@ -27,12 +27,14 @@ jest.mock('@posthog/quill', () => {
         DatePicker: ({
             onApply,
             onCancel,
+            onIncludeTimeChange,
             maxDate,
             showTime,
             showTimeToggle,
         }: {
             onApply: (value: Date) => void
             onCancel: () => void
+            onIncludeTimeChange?: (includeTime: boolean) => void
             maxDate?: Date
             showTime?: boolean
             showTimeToggle?: boolean
@@ -43,6 +45,11 @@ jest.mock('@posthog/quill', () => {
             return react.createElement('div', null, [
                 react.createElement('button', { key: 'apply', onClick: () => onApply(QUILL_STUB_DATE) }, 'stub-apply'),
                 react.createElement('button', { key: 'cancel', onClick: onCancel }, 'stub-cancel'),
+                react.createElement(
+                    'button',
+                    { key: 'time-on', onClick: () => onIncludeTimeChange?.(true) },
+                    'stub-time-on'
+                ),
             ])
         },
     }
@@ -160,6 +167,23 @@ describe('DatePicker', () => {
 
             expect(onChange).toHaveBeenCalledTimes(1)
             expect(onChange.mock.calls[0][0].format('YYYY-MM-DD')).toBe('2023-01-20')
+        })
+
+        it('updates the trigger label when time is toggled on in the panel', async () => {
+            const { container } = renderDatePicker(dayjs('2023-01-15T09:30'), {
+                granularity: 'day',
+                showTimeToggle: true,
+            })
+
+            const trigger = within(container).getByRole('button', { name: /January 15, 2023/ })
+            expect(trigger.textContent).toBe('January 15, 2023')
+
+            await userEvent.click(trigger)
+            await userEvent.click(await screen.findByText('stub-time-on'))
+
+            expect(within(container).getByRole('button', { name: /January 15, 2023/ }).textContent).toBe(
+                'January 15, 2023 09:30'
+            )
         })
 
         it('forwards maxDate to the Quill panel so future dates can be selected', async () => {

@@ -110,9 +110,14 @@ function DatePickerQuill({
     'data-attr': dataAttr,
 }: DatePickerProps): JSX.Element {
     const [open, setOpen] = useState(false)
-    const showTime = granularity === 'minute'
-    const labelFormat = format ?? (showTime ? QUILL_TRIGGER_DATETIME_FORMAT : QUILL_TRIGGER_FORMAT)
+    const [includeTime, setIncludeTime] = useState(granularity === 'minute')
+    const labelFormat = format ?? (includeTime ? QUILL_TRIGGER_DATETIME_FORMAT : QUILL_TRIGGER_FORMAT)
     const label = value ? value.format(labelFormat) : (placeholder ?? 'Select date')
+
+    const handleIncludeTimeChange = (next: boolean): void => {
+        setIncludeTime(next)
+        onToggleTime?.(next)
+    }
 
     const applyDate = (next: Date): void => {
         onChange(dayjs(next))
@@ -141,9 +146,9 @@ function DatePickerQuill({
                     <QuillDatePicker
                         value={value ? value.toDate() : new Date()}
                         maxDate={maxDate?.toDate()}
-                        showTime={showTime}
+                        showTime={granularity === 'minute'}
                         showTimeToggle={!!showTimeToggle}
-                        onIncludeTimeChange={onToggleTime}
+                        onIncludeTimeChange={handleIncludeTimeChange}
                         onApply={applyDate}
                         onCancel={() => setOpen(false)}
                     />
