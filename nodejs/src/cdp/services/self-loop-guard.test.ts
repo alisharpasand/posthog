@@ -1,5 +1,13 @@
 import { Team } from '../../types'
-import { extractRequestApiKey, isPostHogIngestUrl, isSelfReferentialIngestFetch } from './self-loop-guard'
+import { parseJSON } from '../../utils/json-parse'
+import {
+    EXECUTION_COUNT_PROPERTY,
+    extractRequestApiKey,
+    injectExecutionCount,
+    isPostHogIngestUrl,
+    isSelfReferentialIngestFetch,
+    parseExtraIngestHosts,
+} from './self-loop-guard'
 
 // Synthetic, non-production values. OWN_TOKEN is the project the destination runs in;
 // OTHER_TOKEN is a different project (legitimate cross-project replication).
@@ -150,6 +158,55 @@ describe('self-loop-guard', () => {
             },
         ])('returns $expected for: $case', ({ args, expected }) => {
             expect(detect(args)).toBe(expected)
+        })
+
+        it.each([
+            { case: 'not recognised without the extra host', extraIngestHosts: undefined, expected: false },
+            { case: 'recognised once the host is opted in', extraIngestHosts: new Set(['localhost']), expected: true },
+        ])('extra ingest host (self-hosted / local): $case', ({ extraIngestHosts, expected }) => {
+            expect(
+                isSelfReferentialIngestFetch({
+                    url: 'http://localhost:8000/i/v0/e/',
+                    body: captureBody('e'),
+                    team: TEAM,
+                    extraIngestHosts,
+                })
+            ).toBe(expected)
+        })
+    })
+
+    describe('parseExtraIngestHosts', () => {
+        it.each([
+            {
+                case: 'trims, lowercases, and drops blanks',
+                input: ' localhost , Example.COM ,, ',
+                expected: ['localhost', 'example.com'],
+            },
+            { case: 'empty config', input: '', expected: [] },
+            { case: 'single host', input: 'eu.i.posthog.com', expected: ['eu.i.posthog.com'] },
+        ])('$case', ({ input, expected }) => {
+            expect([...parseExtraIngestHosts(input)]).toEqual(expected)
+        })
+    })
+
+    describe('injectExecutionCount', () => {
+        it('stamps the counter onto a single-event body, preserving existing properties', () => {
+            const out = injectExecutionCount(captureBody('alpha', { foo: 'bar' }), 3)
+            expect(parseJSON(out as string).properties).toMatchObject({ foo: 'bar', [EXECUTION_COUNT_PROPERTY]: 3 })
+        })
+
+        it('stamps the counter onto every entry of a batch body', () => {
+            const out = injectExecutionCount(batchBody(['a', 'b']), 5)
+            const parsed = parseJSON(out as string)
+            expect(parsed.batch.map((e: any) => e.properties[EXECUTION_COUNT_PROPERTY])).toEqual([5, 5])
+        })
+
+        it.each([
+            { case: 'unparseable', body: 'not-json{{' },
+            { case: 'empty string', body: '' },
+            { case: 'null', body: null },
+        ])('returns a non-capture body unchanged: $case', ({ body }) => {
+            expect(injectExecutionCount(body, 1)).toBe(body)
         })
     })
 })

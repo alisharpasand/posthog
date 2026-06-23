@@ -37,9 +37,13 @@ import { HogInputsService } from './hog-inputs.service'
 import { EmailService } from './messaging/email.service'
 import { RecipientTokensService } from './messaging/recipient-tokens.service'
 import {
+    EXECUTION_COUNT_PROPERTY,
+    SELF_LOOP_MAX_DEPTH,
     SelfLoopGuardMode,
+    injectExecutionCount,
     isPostHogIngestUrl,
     isSelfReferentialIngestFetch,
+    parseExtraIngestHosts,
     selfLoopGuardCounter,
 } from './self-loop-guard'
 
@@ -56,6 +60,7 @@ export interface HogExecutorConfig {
     fetchBackoffBaseMs: number
     fetchBackoffMaxMs: number
     selfLoopGuardMode: SelfLoopGuardMode
+    selfLoopGuardExtraIngestHosts: string
     emailQueueRouting: string
 }
 
@@ -201,6 +206,7 @@ export type HogExecutorExecuteAsyncOptions = HogExecutorExecuteOptions & {
 
 export class HogExecutorService {
     private emailQueueMatcher: ValueMatcher<number>
+    private selfLoopExtraIngestHosts: ReadonlySet<string>
 
     constructor(
         private config: HogExecutorConfig,
@@ -210,6 +216,7 @@ export class HogExecutorService {
         private recipientTokensService: RecipientTokensService
     ) {
         this.emailQueueMatcher = buildIntegerMatcherWithPercentage(config.emailQueueRouting)
+        this.selfLoopExtraIngestHosts = parseExtraIngestHosts(config.selfLoopGuardExtraIngestHosts)
     }
 
     async buildInputsWithGlobals(
@@ -770,24 +777,53 @@ export class HogExecutorService {
             }
         }
 
-        // Observe-only detection of event-forwarding loops: a fetch back into this
-        // project's own ingestion endpoint re-enters the pipeline and can re-trigger this
-        // same function. We only measure for now (a follow-up will design enforcement from
-        // this signal). The ingest-URL check gates the team lookup so external fetches (the
-        // common case) pay nothing, and the whole block fails open - detection must never
-        // break a destination it was only meant to watch.
-        if (this.config.selfLoopGuardMode !== 'disabled' && isPostHogIngestUrl(params.url)) {
+        // Bound event-forwarding loops: a fetch back into this project's own ingestion
+        // endpoint re-enters the pipeline and can re-trigger this same function. The
+        // ingest-URL check gates the team lookup so external fetches (the common case) pay
+        // nothing, and the whole block fails open - the guard must never break a destination
+        // it was only meant to protect.
+        const guardMode = this.config.selfLoopGuardMode
+        if (guardMode !== 'disabled' && isPostHogIngestUrl(params.url, this.selfLoopExtraIngestHosts)) {
             try {
                 const team = await this.asyncContext.teamManager.getTeam(invocation.teamId)
-                if (team && isSelfReferentialIngestFetch({ url: params.url, body: params.body, team })) {
-                    selfLoopGuardCounter.inc({ mode: this.config.selfLoopGuardMode, action: 'detected' })
-                    addLog(
-                        'warn',
-                        `This fetch targets a PostHog ingestion endpoint using this project's own API key, which can form an event-forwarding loop. To capture an event back into this project use the 'postHogCapture' helper, or to enrich incoming events use a transformation.`
-                    )
+                if (
+                    team &&
+                    isSelfReferentialIngestFetch({
+                        url: params.url,
+                        body: params.body,
+                        team,
+                        extraIngestHosts: this.selfLoopExtraIngestHosts,
+                    })
+                ) {
+                    // Hops already taken by this chain. Shares the counter `postHogCapture`
+                    // increments, so a chain mixing both paths is bounded once.
+                    const givenCount = invocation.state.globals.event?.properties?.[EXECUTION_COUNT_PROPERTY]
+                    const executionCount = typeof givenCount === 'number' ? givenCount : 0
+
+                    if (guardMode === 'warn') {
+                        selfLoopGuardCounter.inc({ mode: guardMode, action: 'detected' })
+                        addLog(
+                            'warn',
+                            `This fetch targets a PostHog ingestion endpoint using this project's own API key, which can form an event-forwarding loop. To capture an event back into this project use the 'postHogCapture' helper, or to enrich incoming events use a transformation.`
+                        )
+                    } else if (executionCount >= SELF_LOOP_MAX_DEPTH) {
+                        // enforce, chain has reached the cap - break it.
+                        selfLoopGuardCounter.inc({ mode: guardMode, action: 'blocked' })
+                        addLog(
+                            'error',
+                            `Refusing to fetch a PostHog ingestion endpoint using this project's own API key - this event-forwarding loop has already repeated ${SELF_LOOP_MAX_DEPTH} times. To capture an event back into this project use the 'postHogCapture' helper, or to enrich incoming events use a transformation.`
+                        )
+                        result.error = new Error('Self-referential event-forwarding loop blocked at max depth')
+                        result.finished = true
+                        return result
+                    } else {
+                        // enforce, under the cap - stamp the next hop and let the fetch proceed.
+                        selfLoopGuardCounter.inc({ mode: guardMode, action: 'allowed_with_counter' })
+                        params.body = injectExecutionCount(params.body, executionCount + 1)
+                    }
                 }
             } catch (err) {
-                logger.warn('🦔', '[HogExecutor] Self-loop guard detection skipped due to an internal error', {
+                logger.warn('🦔', '[HogExecutor] Self-loop guard skipped due to an internal error', {
                     error: err,
                     teamId: invocation.teamId,
                 })

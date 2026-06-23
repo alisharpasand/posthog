@@ -213,6 +213,7 @@ export class TemplateTester {
                 fetchBackoffMaxMs: config.CDP_FETCH_BACKOFF_MAX_MS,
                 emailQueueRouting: config.CDP_EMAIL_QUEUE_ROUTING,
                 selfLoopGuardMode: config.CDP_SELF_LOOP_GUARD_MODE,
+                selfLoopGuardExtraIngestHosts: config.CDP_SELF_LOOP_GUARD_EXTRA_INGEST_HOSTS,
             },
             { teamManager: undefined as any, siteUrl: config.SITE_URL },
             hogInputsService,
