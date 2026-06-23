@@ -9,17 +9,17 @@ class Migration(migrations.Migration):
     operations = [
         migrations.AddField(
             model_name="slacksettings",
-            name="ai_runtime_adapter",
+            name="runtime_adapter",
             field=models.CharField(blank=True, max_length=32, null=True),
         ),
         migrations.AddField(
             model_name="slacksettings",
-            name="ai_model",
+            name="model",
             field=models.CharField(blank=True, max_length=128, null=True),
         ),
         migrations.AddField(
             model_name="slacksettings",
-            name="ai_reasoning_effort",
+            name="reasoning_effort",
             field=models.CharField(blank=True, max_length=16, null=True),
         ),
     ]

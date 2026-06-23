@@ -1,4 +1,4 @@
-"""End-to-end tests for the App Home tab + AI preferences modal handlers.
+"""End-to-end tests for the App Home tab + AI settings modal handlers.
 
 Exercises the real handler flow against a real `SlackSettings` row, with the
 Slack API client mocked out so we can assert what would be sent to Slack.
@@ -27,9 +27,7 @@ from products.slack_app.backend.services.slack_app_home import (
     MODAL_BLOCK_MODEL,
     MODAL_BLOCK_REASONING_EFFORT,
     MODAL_BLOCK_RUNTIME_ADAPTER,
-)
-from products.slack_app.backend.services.slack_app_home_handlers import (
-    handle_ai_prefs_block_action,
+    handle_ai_settings_block_action,
     handle_app_home_opened,
     handle_app_home_view_submission,
 )
@@ -58,7 +56,7 @@ def mock_slack_client():
     """
 
     fake_client = MagicMock()
-    with patch("products.slack_app.backend.services.slack_app_home_handlers.SlackIntegration") as cls:
+    with patch("products.slack_app.backend.services.slack_app_home.SlackIntegration") as cls:
         instance = MagicMock()
         instance.client = fake_client
         cls.return_value = instance
@@ -68,7 +66,7 @@ def mock_slack_client():
 @pytest.fixture
 def flag_on():
     with patch(
-        "products.slack_app.backend.services.ai_preferences.posthoganalytics.feature_enabled",
+        "products.slack_app.backend.feature_flags.posthoganalytics.feature_enabled",
         return_value=True,
     ):
         yield
@@ -77,7 +75,7 @@ def flag_on():
 @pytest.fixture
 def admin_user():
     with patch(
-        "products.slack_app.backend.services.slack_app_home_handlers.is_slack_workspace_admin",
+        "products.slack_app.backend.services.slack_user_info.is_slack_workspace_admin",
         return_value=True,
     ):
         yield
@@ -86,7 +84,7 @@ def admin_user():
 @pytest.fixture
 def non_admin_user():
     with patch(
-        "products.slack_app.backend.services.slack_app_home_handlers.is_slack_workspace_admin",
+        "products.slack_app.backend.services.slack_user_info.is_slack_workspace_admin",
         return_value=False,
     ):
         yield
@@ -192,7 +190,7 @@ class TestEditPersonalAction:
             slack_user_id="U001",
             trigger_id="trig.1",
         )
-        handle_ai_prefs_block_action(payload, payload["actions"][0])
+        handle_ai_settings_block_action(payload, payload["actions"][0])
         assert mock_slack_client.views_open.called
         view = mock_slack_client.views_open.call_args.kwargs["view"]
         assert view["callback_id"] == EDIT_MODAL_PERSONAL_CALLBACK_ID
@@ -205,7 +203,7 @@ class TestEditWorkspaceAdminGate:
             slack_user_id="U001",
             trigger_id="trig.2",
         )
-        handle_ai_prefs_block_action(payload, payload["actions"][0])
+        handle_ai_settings_block_action(payload, payload["actions"][0])
         assert mock_slack_client.views_open.called
 
     def test_non_admin_blocked(self, slack_integration, mock_slack_client, non_admin_user):
@@ -215,7 +213,7 @@ class TestEditWorkspaceAdminGate:
             trigger_id="trig.3",
             channel="C1",
         )
-        handle_ai_prefs_block_action(payload, payload["actions"][0])
+        handle_ai_settings_block_action(payload, payload["actions"][0])
         # Non-admin should not get the modal — they get an ephemeral notice instead.
         assert not mock_slack_client.views_open.called
         assert mock_slack_client.chat_postEphemeral.called
@@ -227,21 +225,21 @@ class TestResetPersonal:
             default_integration=slack_integration,
             slack_workspace_id=SLACK_WORKSPACE_ID,
             slack_user_id="U001",
-            ai_runtime_adapter="claude",
-            ai_model="claude-opus-4-7",
-            ai_reasoning_effort="high",
+            runtime_adapter="claude",
+            model="claude-opus-4-7",
+            reasoning_effort="high",
         )
         payload = _block_action_payload(
             action_id=ACTION_RESET_PERSONAL,
             slack_user_id="U001",
             trigger_id="trig.4",
         )
-        handle_ai_prefs_block_action(payload, payload["actions"][0])
+        handle_ai_settings_block_action(payload, payload["actions"][0])
 
         row = SlackSettings.objects.get(slack_workspace_id=SLACK_WORKSPACE_ID, slack_user_id="U001")
-        assert row.ai_runtime_adapter is None
-        assert row.ai_model is None
-        assert row.ai_reasoning_effort is None
+        assert row.runtime_adapter is None
+        assert row.model is None
+        assert row.reasoning_effort is None
         # And the Home tab gets re-published with the cleared state.
         assert mock_slack_client.views_publish.called
 
@@ -265,13 +263,13 @@ class TestPersonalSubmit:
         assert json.loads(response.content) == {"response_action": "clear"}
 
         row = SlackSettings.objects.get(slack_workspace_id=SLACK_WORKSPACE_ID, slack_user_id="U001")
-        assert row.ai_runtime_adapter == "claude"
-        assert row.ai_model == "claude-opus-4-7"
-        assert row.ai_reasoning_effort == "high"
+        assert row.runtime_adapter == "claude"
+        assert row.model == "claude-opus-4-7"
+        assert row.reasoning_effort == "high"
         assert mock_slack_client.views_publish.called
 
     def test_invalid_pair_keeps_modal_open_with_error(self, slack_integration, mock_slack_client, flag_on):
-        # Effort unsupported on this model — validate_ai_preferences rejects.
+        # Effort unsupported on this model — validate_ai_settings rejects.
         payload = _view_submission_payload(
             callback_id=EDIT_MODAL_PERSONAL_CALLBACK_ID,
             slack_user_id="U001",

@@ -410,15 +410,15 @@ def create_posthog_code_task_for_repo_activity(
     # PR tooling enabled so an explicit follow-up can clone a repo and publish.
     allow_pr_creation = True
 
-    # Resolve AI preferences for this (workspace, slack user). The resolver
+    # Resolve AI settings for this (workspace, slack user). The resolver
     # short-circuits to empty when the slack-app-home flag is off, so today's
     # behaviour is preserved for installs that haven't opted into the App
     # Home tab. Field names match `Task.create_and_run` kwargs so we can pass
     # them through directly. Imported via the slack_app facade so the call
     # site doesn't reach into `services/` internals.
-    from products.slack_app.backend.facade.ai_preferences import resolve_ai_preferences
+    from products.slack_app.backend.facade.ai_settings import resolve_ai_settings
 
-    ai_prefs = resolve_ai_preferences(integration, slack_user_id)
+    ai_prefs = resolve_ai_settings(integration, slack_user_id)
 
     # 1. Create task + run WITHOUT starting the workflow
     try:

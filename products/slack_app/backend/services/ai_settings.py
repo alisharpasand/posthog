@@ -1,4 +1,4 @@
-"""Per-(workspace, Slack user) AI preferences for task-run sandboxes triggered
+"""Per-(workspace, Slack user) AI settings for task-run sandboxes triggered
 from Slack.
 
 Field names mirror the task-run request serializer
@@ -15,38 +15,32 @@ to avoid a stale effort silently sticking after the model changes.
 Unset fields stay `None` — the task layer applies its own defaults. We do not
 duplicate task defaults here to avoid divergence.
 
-The whole feature is gated by `SLACK_APP_HOME_FLAG` because the surfaces that
-write these preferences (the App Home tab and supporting events) require Slack
-app manifest changes that roll out separately. When the flag is off the
-resolver short-circuits to an empty preferences object, preserving today's
-behaviour for workspaces that haven't opted in.
+The whole feature is gated by the `slack-app-home` feature flag (checked via
+`feature_flags.is_slack_app_home_enabled`) because the surfaces that write
+these settings (the App Home tab and supporting events) require Slack app
+manifest changes that roll out separately. When the flag is off the resolver
+short-circuits to an empty settings object, preserving today's behaviour for
+workspaces that haven't opted in.
 """
 
 from __future__ import annotations
 
-import logging
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from django.db.models import Q
 
-import posthoganalytics
-
-from posthog.utils import get_instance_region
+from products.slack_app.backend.feature_flags import is_slack_app_home_enabled
 
 if TYPE_CHECKING:
     from posthog.models.integration import Integration
 
     from products.slack_app.backend.models import SlackSettings
 
-logger = logging.getLogger(__name__)
-
-SLACK_APP_HOME_FLAG = "slack-app-home"
-
 
 @dataclass(frozen=True)
-class AIPreferences:
-    """Resolved AI preferences for a single (workspace, slack_user_id) lookup.
+class AISettings:
+    """Resolved AI settings for a single (workspace, slack_user_id) lookup.
 
     Field names match the task-run request serializer so callers can splat this
     straight into the task creation payload.
@@ -61,11 +55,11 @@ class AIPreferences:
         return self.runtime_adapter is None and self.model is None and self.reasoning_effort is None
 
 
-_EMPTY = AIPreferences()
+_EMPTY = AISettings()
 
 
-def resolve_ai_preferences(integration: Integration, slack_user_id: str | None) -> AIPreferences:
-    """Resolve the effective AI preferences for a Slack user in a workspace.
+def resolve_ai_settings(integration: Integration, slack_user_id: str | None) -> AISettings:
+    """Resolve the effective AI settings for a Slack user in a workspace.
 
     The integration's `integration_id` is the Slack workspace id (team id). The
     workspace default row has `slack_user_id IS NULL`; a personal override has
@@ -73,7 +67,7 @@ def resolve_ai_preferences(integration: Integration, slack_user_id: str | None) 
     per-field-group; `(runtime_adapter, model)` moves as a pair.
     """
 
-    if not _feature_enabled(integration):
+    if not is_slack_app_home_enabled(integration):
         return _EMPTY
 
     from products.slack_app.backend.models import SlackSettings
@@ -99,7 +93,7 @@ def resolve_ai_preferences(integration: Integration, slack_user_id: str | None) 
     if runtime_adapter is not None and model is not None:
         reasoning_effort = _pick_reasoning_effort(user_row, workspace_row, runtime_adapter, model)
 
-    return AIPreferences(
+    return AISettings(
         runtime_adapter=runtime_adapter,
         model=model,
         reasoning_effort=reasoning_effort,
@@ -109,7 +103,7 @@ def resolve_ai_preferences(integration: Integration, slack_user_id: str | None) 
 def _pair(row: SlackSettings | None) -> tuple[str | None, str | None]:
     if row is None:
         return (None, None)
-    return (row.ai_runtime_adapter, row.ai_model)
+    return (row.runtime_adapter, row.model)
 
 
 def _first_complete_pair(*pairs: tuple[str | None, str | None]) -> tuple[str | None, str | None]:
@@ -145,40 +139,13 @@ def _pick_reasoning_effort(
     for row in (user_row, workspace_row):
         if row is None:
             continue
-        effort = row.ai_reasoning_effort
+        effort = row.reasoning_effort
         if effort and effort in supported:
             return effort
     return None
 
 
-def _feature_enabled(integration: Integration) -> bool:
-    """Fail-closed feature flag check, keyed on Slack workspace + PostHog org.
-
-    Mirrors the existing slack_app flag evaluation pattern (see
-    `_assistant_enabled` / `_untagged_thread_followups_enabled` in
-    `products/slack_app/backend/api.py`). Fails closed because a transient
-    PostHog API outage must not silently enable the feature for everyone.
-    """
-    try:
-        return bool(
-            posthoganalytics.feature_enabled(
-                SLACK_APP_HOME_FLAG,
-                f"slack_workspace:{integration.integration_id}",
-                groups={"organization": str(integration.team.organization_id)},
-                person_properties={"region": get_instance_region() or "unknown"},
-                only_evaluate_locally=False,
-                send_feature_flag_events=False,
-            )
-        )
-    except Exception:
-        logger.exception(
-            "slack_app_ai_preferences_feature_flag_check_failed",
-            extra={"integration_id": integration.id},
-        )
-        return False
-
-
-def validate_ai_preferences(
+def validate_ai_settings(
     runtime_adapter: str | None,
     model: str | None,
     reasoning_effort: str | None,

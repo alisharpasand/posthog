@@ -1,1 +1,1 @@
-0009_slacksettings_ai_preferences
+0009_slacksettings_ai_settings

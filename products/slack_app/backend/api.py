@@ -61,13 +61,13 @@ from products.slack_app.backend.services.integration_resolver import (
     resolve_user_for_workspace,
     user_resolution_failure_reply,
 )
-from products.slack_app.backend.services.slack_app_home_handlers import (
-    EDIT_PERSONAL as _AI_PREFS_ACTION_EDIT_PERSONAL,
-    EDIT_WORKSPACE as _AI_PREFS_ACTION_EDIT_WORKSPACE,
-    MODAL_MODEL as _AI_PREFS_MODAL_ACTION_MODEL,
-    MODAL_RUNTIME_ADAPTER as _AI_PREFS_MODAL_ACTION_RUNTIME_ADAPTER,
-    RESET_PERSONAL as _AI_PREFS_ACTION_RESET_PERSONAL,
-    handle_ai_prefs_block_action as _handle_ai_prefs_block_action,
+from products.slack_app.backend.services.slack_app_home import (
+    EDIT_PERSONAL as _AI_SETTINGS_ACTION_EDIT_PERSONAL,
+    EDIT_WORKSPACE as _AI_SETTINGS_ACTION_EDIT_WORKSPACE,
+    MODAL_MODEL as _AI_SETTINGS_MODAL_ACTION_MODEL,
+    MODAL_RUNTIME_ADAPTER as _AI_SETTINGS_MODAL_ACTION_RUNTIME_ADAPTER,
+    RESET_PERSONAL as _AI_SETTINGS_ACTION_RESET_PERSONAL,
+    handle_ai_settings_block_action as _handle_ai_settings_block_action,
     handle_app_home_opened as _handle_app_home_opened,
     handle_app_home_view_submission as _handle_app_home_view_submission,
 )
@@ -1600,7 +1600,7 @@ def route_posthog_code_event_to_relevant_region(
 
     # App Home tab: published per-user when they open the Home tab. Always
     # handled locally — `views.publish` just renders a snapshot of the user's
-    # AI preferences against the integration row, no cross-region state.
+    # AI settings against the integration row, no cross-region state.
     if event_type == "app_home_opened":
         try:
             _handle_app_home_opened(event, slack_team_id)
@@ -3253,12 +3253,12 @@ def posthog_code_interactivity_handler(request: HttpRequest) -> HttpResponse:
             if action_id == onboarding.INBOX_AI_APPROVAL_ACTION_ID:
                 return inbox_interactivity.handle_inbox_ai_approval(payload)
             if action_id in (
-                _AI_PREFS_ACTION_EDIT_PERSONAL,
-                _AI_PREFS_ACTION_EDIT_WORKSPACE,
-                _AI_PREFS_ACTION_RESET_PERSONAL,
-                _AI_PREFS_MODAL_ACTION_RUNTIME_ADAPTER,
-                _AI_PREFS_MODAL_ACTION_MODEL,
+                _AI_SETTINGS_ACTION_EDIT_PERSONAL,
+                _AI_SETTINGS_ACTION_EDIT_WORKSPACE,
+                _AI_SETTINGS_ACTION_RESET_PERSONAL,
+                _AI_SETTINGS_MODAL_ACTION_RUNTIME_ADAPTER,
+                _AI_SETTINGS_MODAL_ACTION_MODEL,
             ):
-                return _handle_ai_prefs_block_action(payload, action)
+                return _handle_ai_settings_block_action(payload, action)
 
     return HttpResponse(status=200)

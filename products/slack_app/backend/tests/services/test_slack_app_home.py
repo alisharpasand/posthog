@@ -1,7 +1,7 @@
-"""Block Kit renderer tests for the App Home tab + AI preferences modal.
+"""Block Kit renderer tests for the App Home tab + AI settings modal.
 
 These cover the pure-function rendering layer. Event/interactivity wiring is
-covered in test_slack_app_home_handlers.py.
+covered in test_slack_app_home.py.
 
 The renderer pulls model lists and display labels from
 `products.tasks.backend.facade.run_config` at render time. We stub that
@@ -17,7 +17,7 @@ from types import ModuleType
 
 import pytest
 
-from products.slack_app.backend.services.ai_preferences import AIPreferences
+from products.slack_app.backend.services.ai_settings import AISettings
 from products.slack_app.backend.services.slack_app_home import (
     ACTION_EDIT_PERSONAL,
     ACTION_EDIT_WORKSPACE,
@@ -102,8 +102,8 @@ def _stub_picker_facade():
 def _make_row(*, runtime_adapter=None, model=None, reasoning_effort=None):
     """Stand-in for a SlackSettings row used by the renderer.
 
-    The renderer only reads `ai_runtime_adapter` / `ai_model` /
-    `ai_reasoning_effort`, so a plain duck type is enough — avoids dragging
+    The renderer only reads `runtime_adapter` / `model` /
+    `reasoning_effort`, so a plain duck type is enough — avoids dragging
     the database fixture into these pure-function tests.
     """
 
@@ -111,9 +111,9 @@ def _make_row(*, runtime_adapter=None, model=None, reasoning_effort=None):
         pass
 
     row = _Row()
-    row.ai_runtime_adapter = runtime_adapter
-    row.ai_model = model
-    row.ai_reasoning_effort = reasoning_effort
+    row.runtime_adapter = runtime_adapter
+    row.model = model
+    row.reasoning_effort = reasoning_effort
     return row
 
 
@@ -133,7 +133,7 @@ def _block_ids(view: dict) -> list[str]:
 class TestRenderHomeView:
     def test_empty_state_renders_buttons_and_no_reset(self):
         view = render_home_view(
-            effective=AIPreferences(),
+            effective=AISettings(),
             user_row=None,
             workspace_row=None,
             is_admin=False,
@@ -148,7 +148,7 @@ class TestRenderHomeView:
 
     def test_admin_sees_workspace_edit_button(self):
         view = render_home_view(
-            effective=AIPreferences(),
+            effective=AISettings(),
             user_row=None,
             workspace_row=None,
             is_admin=True,
@@ -157,7 +157,7 @@ class TestRenderHomeView:
 
     def test_personal_override_renders_reset_button(self):
         view = render_home_view(
-            effective=AIPreferences(runtime_adapter="claude", model="claude-opus-4-7", reasoning_effort="high"),
+            effective=AISettings(runtime_adapter="claude", model="claude-opus-4-7", reasoning_effort="high"),
             user_row=_make_row(runtime_adapter="claude", model="claude-opus-4-7", reasoning_effort="high"),
             workspace_row=None,
             is_admin=False,
@@ -166,7 +166,7 @@ class TestRenderHomeView:
 
     def test_active_model_summary_mentions_model_label(self):
         view = render_home_view(
-            effective=AIPreferences(runtime_adapter="claude", model="claude-opus-4-7", reasoning_effort="high"),
+            effective=AISettings(runtime_adapter="claude", model="claude-opus-4-7", reasoning_effort="high"),
             user_row=None,
             workspace_row=_make_row(runtime_adapter="claude", model="claude-opus-4-7", reasoning_effort="high"),
             is_admin=True,
@@ -202,25 +202,25 @@ class TestRenderEditModal:
         ],
     )
     def test_callback_id_matches_scope(self, scope, callback_id):
-        view = render_edit_modal(scope=scope, current=AIPreferences())
+        view = render_edit_modal(scope=scope, current=AISettings())
         assert view["callback_id"] == callback_id
 
     def test_no_runtime_means_no_model_or_effort_blocks(self):
-        view = render_edit_modal(scope="personal", current=AIPreferences())
+        view = render_edit_modal(scope="personal", current=AISettings())
         ids = _block_ids(view)
         assert MODAL_BLOCK_RUNTIME_ADAPTER in ids
         assert MODAL_BLOCK_MODEL not in ids
         assert MODAL_BLOCK_REASONING_EFFORT not in ids
 
     def test_runtime_picked_unlocks_model_block(self):
-        view = render_edit_modal(scope="personal", current=AIPreferences(runtime_adapter="claude"))
+        view = render_edit_modal(scope="personal", current=AISettings(runtime_adapter="claude"))
         ids = _block_ids(view)
         assert MODAL_BLOCK_MODEL in ids
         # Effort block needs both the model and a non-empty supported list.
         assert MODAL_BLOCK_REASONING_EFFORT not in ids
 
     def test_model_options_match_runtime(self):
-        view = render_edit_modal(scope="personal", current=AIPreferences(runtime_adapter="codex"))
+        view = render_edit_modal(scope="personal", current=AISettings(runtime_adapter="codex"))
         model_block = next(b for b in view["blocks"] if b.get("block_id") == MODAL_BLOCK_MODEL)
         option_values = [o["value"] for o in model_block["element"]["options"]]
         # Sanity: codex models, not claude models. Asserting via prefix keeps
@@ -232,7 +232,7 @@ class TestRenderEditModal:
     def test_effort_block_renders_only_when_supported_efforts_provided(self):
         view = render_edit_modal(
             scope="personal",
-            current=AIPreferences(runtime_adapter="claude", model="claude-opus-4-7"),
+            current=AISettings(runtime_adapter="claude", model="claude-opus-4-7"),
             supported_efforts=["low", "medium", "high"],
         )
         block = next(b for b in view["blocks"] if b.get("block_id") == MODAL_BLOCK_REASONING_EFFORT)
@@ -243,7 +243,7 @@ class TestRenderEditModal:
     def test_initial_options_reflect_current_values(self):
         view = render_edit_modal(
             scope="workspace",
-            current=AIPreferences(
+            current=AISettings(
                 runtime_adapter="claude",
                 model="claude-opus-4-7",
                 reasoning_effort="high",
@@ -258,7 +258,7 @@ class TestRenderEditModal:
         assert effort_block["element"]["initial_option"]["value"] == "high"
 
     def test_dispatch_action_set_on_runtime_and_model(self):
-        view = render_edit_modal(scope="personal", current=AIPreferences(runtime_adapter="claude"))
+        view = render_edit_modal(scope="personal", current=AISettings(runtime_adapter="claude"))
         runtime_block = next(b for b in view["blocks"] if b.get("block_id") == MODAL_BLOCK_RUNTIME_ADAPTER)
         model_block = next(b for b in view["blocks"] if b.get("block_id") == MODAL_BLOCK_MODEL)
         # dispatch_action triggers a block_actions payload so the modal can

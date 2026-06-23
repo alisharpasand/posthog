@@ -7,13 +7,9 @@ from posthog.models.integration import Integration
 from posthog.models.organization import Organization
 from posthog.models.team.team import Team
 
+from products.slack_app.backend.feature_flags import SLACK_APP_HOME_FLAG
 from products.slack_app.backend.models import SlackSettings
-from products.slack_app.backend.services.ai_preferences import (
-    SLACK_APP_HOME_FLAG,
-    AIPreferences,
-    resolve_ai_preferences,
-    validate_ai_preferences,
-)
+from products.slack_app.backend.services.ai_settings import AISettings, resolve_ai_settings, validate_ai_settings
 
 
 @pytest.fixture
@@ -33,7 +29,7 @@ def slack_setup(db):
 def flag_on():
     """Flip the slack-app-home flag on for the duration of a test."""
     with patch(
-        "products.slack_app.backend.services.ai_preferences.posthoganalytics.feature_enabled",
+        "products.slack_app.backend.feature_flags.posthoganalytics.feature_enabled",
         return_value=True,
     ) as mock:
         yield mock
@@ -42,7 +38,7 @@ def flag_on():
 @pytest.fixture
 def flag_off():
     with patch(
-        "products.slack_app.backend.services.ai_preferences.posthoganalytics.feature_enabled",
+        "products.slack_app.backend.feature_flags.posthoganalytics.feature_enabled",
         return_value=False,
     ) as mock:
         yield mock
@@ -128,32 +124,32 @@ def _stub_task_runtime_helpers():
             sys.modules[module_name] = saved
 
 
-class TestResolveAIPreferences:
+class TestResolveAISettings:
     @pytest.mark.parametrize(
         "user_row,workspace_row,expected",
         [
             pytest.param(
                 None,
                 None,
-                AIPreferences(),
+                AISettings(),
                 id="no-rows-returns-empty",
             ),
             pytest.param(
                 None,
                 {"runtime_adapter": "claude", "model": "claude-opus-4-7", "effort": "high"},
-                AIPreferences(runtime_adapter="claude", model="claude-opus-4-7", reasoning_effort="high"),
+                AISettings(runtime_adapter="claude", model="claude-opus-4-7", reasoning_effort="high"),
                 id="workspace-only-applies",
             ),
             pytest.param(
                 {"runtime_adapter": "codex", "model": "gpt-5.5", "effort": "high"},
                 None,
-                AIPreferences(runtime_adapter="codex", model="gpt-5.5", reasoning_effort="high"),
+                AISettings(runtime_adapter="codex", model="gpt-5.5", reasoning_effort="high"),
                 id="user-only-applies",
             ),
             pytest.param(
                 {"runtime_adapter": "claude", "model": "claude-opus-4-7", "effort": "high"},
                 {"runtime_adapter": "codex", "model": "gpt-5.5", "effort": "low"},
-                AIPreferences(runtime_adapter="claude", model="claude-opus-4-7", reasoning_effort="high"),
+                AISettings(runtime_adapter="claude", model="claude-opus-4-7", reasoning_effort="high"),
                 id="user-overrides-workspace",
             ),
         ],
@@ -165,20 +161,20 @@ class TestResolveAIPreferences:
                 default_integration=integration,
                 slack_workspace_id="T_WS",
                 slack_user_id="U001",
-                ai_runtime_adapter=user_row["runtime_adapter"],
-                ai_model=user_row["model"],
-                ai_reasoning_effort=user_row["effort"],
+                runtime_adapter=user_row["runtime_adapter"],
+                model=user_row["model"],
+                reasoning_effort=user_row["effort"],
             )
         if workspace_row:
             SlackSettings.objects.create(
                 default_integration=integration,
                 slack_workspace_id="T_WS",
                 slack_user_id=None,
-                ai_runtime_adapter=workspace_row["runtime_adapter"],
-                ai_model=workspace_row["model"],
-                ai_reasoning_effort=workspace_row["effort"],
+                runtime_adapter=workspace_row["runtime_adapter"],
+                model=workspace_row["model"],
+                reasoning_effort=workspace_row["effort"],
             )
-        assert resolve_ai_preferences(integration, "U001") == expected
+        assert resolve_ai_settings(integration, "U001") == expected
 
     def test_atomic_pair_workspace_wins_when_user_row_has_no_pair(self, slack_setup, flag_on):
         """A user row with only `reasoning_effort` set (no pair) must not block
@@ -189,20 +185,20 @@ class TestResolveAIPreferences:
             default_integration=integration,
             slack_workspace_id="T_WS",
             slack_user_id="U001",
-            ai_runtime_adapter=None,
-            ai_model=None,
-            ai_reasoning_effort="medium",
+            runtime_adapter=None,
+            model=None,
+            reasoning_effort="medium",
         )
         SlackSettings.objects.create(
             default_integration=integration,
             slack_workspace_id="T_WS",
             slack_user_id=None,
-            ai_runtime_adapter="claude",
-            ai_model="claude-opus-4-7",
-            ai_reasoning_effort="high",
+            runtime_adapter="claude",
+            model="claude-opus-4-7",
+            reasoning_effort="high",
         )
 
-        result = resolve_ai_preferences(integration, "U001")
+        result = resolve_ai_settings(integration, "U001")
         assert result.runtime_adapter == "claude"
         assert result.model == "claude-opus-4-7"
         # User's effort wins over workspace's because both are supported by the
@@ -218,19 +214,19 @@ class TestResolveAIPreferences:
             default_integration=integration,
             slack_workspace_id="T_WS",
             slack_user_id="U001",
-            ai_runtime_adapter=None,
-            ai_model=None,
-            ai_reasoning_effort="xhigh",  # not supported on sonnet-4-6
+            runtime_adapter=None,
+            model=None,
+            reasoning_effort="xhigh",  # not supported on sonnet-4-6
         )
         SlackSettings.objects.create(
             default_integration=integration,
             slack_workspace_id="T_WS",
             slack_user_id=None,
-            ai_runtime_adapter="claude",
-            ai_model="claude-sonnet-4-6",
-            ai_reasoning_effort=None,
+            runtime_adapter="claude",
+            model="claude-sonnet-4-6",
+            reasoning_effort=None,
         )
-        result = resolve_ai_preferences(integration, "U001")
+        result = resolve_ai_settings(integration, "U001")
         assert result.reasoning_effort is None
 
     def test_user_id_none_uses_workspace_row_only(self, slack_setup, flag_on):
@@ -239,12 +235,12 @@ class TestResolveAIPreferences:
             default_integration=integration,
             slack_workspace_id="T_WS",
             slack_user_id=None,
-            ai_runtime_adapter="claude",
-            ai_model="claude-opus-4-7",
-            ai_reasoning_effort="high",
+            runtime_adapter="claude",
+            model="claude-opus-4-7",
+            reasoning_effort="high",
         )
-        result = resolve_ai_preferences(integration, None)
-        assert result == AIPreferences(runtime_adapter="claude", model="claude-opus-4-7", reasoning_effort="high")
+        result = resolve_ai_settings(integration, None)
+        assert result == AISettings(runtime_adapter="claude", model="claude-opus-4-7", reasoning_effort="high")
 
     def test_flag_off_returns_empty_even_with_rows_present(self, slack_setup, flag_off):
         integration = slack_setup
@@ -252,11 +248,11 @@ class TestResolveAIPreferences:
             default_integration=integration,
             slack_workspace_id="T_WS",
             slack_user_id="U001",
-            ai_runtime_adapter="claude",
-            ai_model="claude-opus-4-7",
-            ai_reasoning_effort="high",
+            runtime_adapter="claude",
+            model="claude-opus-4-7",
+            reasoning_effort="high",
         )
-        assert resolve_ai_preferences(integration, "U001") == AIPreferences()
+        assert resolve_ai_settings(integration, "U001") == AISettings()
 
     def test_flag_check_failure_fails_closed(self, slack_setup):
         integration = slack_setup
@@ -264,26 +260,26 @@ class TestResolveAIPreferences:
             default_integration=integration,
             slack_workspace_id="T_WS",
             slack_user_id="U001",
-            ai_runtime_adapter="claude",
-            ai_model="claude-opus-4-7",
-            ai_reasoning_effort="high",
+            runtime_adapter="claude",
+            model="claude-opus-4-7",
+            reasoning_effort="high",
         )
         with patch(
-            "products.slack_app.backend.services.ai_preferences.posthoganalytics.feature_enabled",
+            "products.slack_app.backend.feature_flags.posthoganalytics.feature_enabled",
             side_effect=RuntimeError("boom"),
         ):
-            assert resolve_ai_preferences(integration, "U001") == AIPreferences()
+            assert resolve_ai_settings(integration, "U001") == AISettings()
 
 
-class TestValidateAIPreferences:
+class TestValidateAISettings:
     def test_all_none_is_valid(self):
-        validate_ai_preferences(None, None, None)
+        validate_ai_settings(None, None, None)
 
     def test_full_triple_is_valid(self):
-        validate_ai_preferences("claude", "claude-opus-4-7", "high")
+        validate_ai_settings("claude", "claude-opus-4-7", "high")
 
     def test_pair_without_effort_is_valid(self):
-        validate_ai_preferences("claude", "claude-opus-4-7", None)
+        validate_ai_settings("claude", "claude-opus-4-7", None)
 
     @pytest.mark.parametrize(
         "runtime_adapter,model",
@@ -294,19 +290,19 @@ class TestValidateAIPreferences:
     )
     def test_half_set_pair_rejected(self, runtime_adapter, model):
         with pytest.raises(ValidationError, match="must be set together"):
-            validate_ai_preferences(runtime_adapter, model, None)
+            validate_ai_settings(runtime_adapter, model, None)
 
     def test_unknown_runtime_adapter_rejected(self):
         with pytest.raises(ValidationError, match="Unknown runtime_adapter"):
-            validate_ai_preferences("nonsense", "claude-opus-4-7", None)
+            validate_ai_settings("nonsense", "claude-opus-4-7", None)
 
     def test_unknown_reasoning_effort_rejected(self):
         with pytest.raises(ValidationError, match="Unknown reasoning_effort"):
-            validate_ai_preferences("claude", "claude-opus-4-7", "ultra")
+            validate_ai_settings("claude", "claude-opus-4-7", "ultra")
 
     def test_effort_unsupported_by_model_rejected(self):
         with pytest.raises(ValidationError, match="not supported"):
-            validate_ai_preferences("claude", "claude-sonnet-4-6", "xhigh")
+            validate_ai_settings("claude", "claude-sonnet-4-6", "xhigh")
 
     def test_flag_constant_is_stable(self):
         # Sanity: the flag name is what we documented and rolled out with.
