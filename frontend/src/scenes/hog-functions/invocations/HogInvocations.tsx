@@ -28,12 +28,12 @@ import { DATE_TIME_FORMAT, formatDateRange } from 'lib/utils/datetime'
 import { PersonDisplay } from 'scenes/persons/PersonDisplay'
 import { urls } from 'scenes/urls'
 
-import { hogql } from '~/queries/utils'
+import { escapeHogQLString, hogql } from '~/queries/utils'
 import { DateMappingOption } from '~/types'
 
-import { renderHogFunctionMessage } from '../logs/renderHogFunctionMessage'
 import { LogsViewer } from '../logs/LogsViewer'
 import { LogsViewerLogicProps } from '../logs/logsViewerLogic'
+import { renderHogFunctionMessage } from '../logs/renderHogFunctionMessage'
 import {
     BulkRerunParams,
     HOG_INVOCATIONS_RERUN_MAX_COUNT,
@@ -170,10 +170,10 @@ async function countRerunMatches(
     params: BulkRerunParams
 ): Promise<number> {
     const statusClause = params.status?.length
-        ? hogql.raw(`AND status IN (${params.status.map((s) => `'${s}'`).join(',')})`)
+        ? hogql.raw(`AND status IN (${params.status.map(escapeHogQLString).join(',')})`)
         : hogql.raw('')
     const errorKindClause = params.error_kind?.length
-        ? hogql.raw(`AND error_kind IN (${params.error_kind.map((s) => `'${s.replace(/'/g, "\\'")}'`).join(',')})`)
+        ? hogql.raw(`AND error_kind IN (${params.error_kind.map(escapeHogQLString).join(',')})`)
         : hogql.raw('')
     const maxAttemptsClause =
         typeof params.max_attempts === 'number' ? hogql.raw(`AND attempts < ${params.max_attempts}`) : hogql.raw('')
