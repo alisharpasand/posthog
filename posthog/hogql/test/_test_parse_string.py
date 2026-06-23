@@ -1,11 +1,17 @@
+from collections.abc import Callable
+
 from posthog.test.base import BaseTest
 
-from hogql_parser import parse_string_literal_text as parse_string
+from hogql_parser import parse_string_literal_text as parse_string_cpp
+from hogql_parser_rs import parse_string_literal_text as parse_string_rust
 
+from posthog.hogql.constants import HogQLParserBackend
 from posthog.hogql.errors import SyntaxError
 
 
-def parse_string_test_factory():
+def parse_string_test_factory(backend: HogQLParserBackend):
+    parse_string: Callable[[str], str] = parse_string_rust if backend.startswith("rust") else parse_string_cpp
+
     class TestParseString(BaseTest):
         def test_quote_types(self):
             self.assertEqual(parse_string("`asd`"), "asd")
@@ -19,6 +25,12 @@ def parse_string_test_factory():
             self.assertEqual(parse_string('"a""sd"'), 'a"sd')
             self.assertEqual(parse_string("{a{{sd}"), "a{sd")
             self.assertEqual(parse_string("{a}sd}"), "a}sd")
+
+        def test_quote_run_collapse(self):
+            # Odd/long quote runs pin sequential-replace semantics (rust str::replace vs cpp replace_all).
+            self.assertEqual(parse_string("''''''"), "''")
+            self.assertEqual(parse_string("'a'''b'"), "a''b")
+            self.assertEqual(parse_string("`a```b`"), "a``b")
 
         def test_escaped_quotes_slash(self):
             self.assertEqual(parse_string("`a\\`sd`"), "a`sd")
