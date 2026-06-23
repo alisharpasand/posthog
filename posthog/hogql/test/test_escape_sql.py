@@ -66,6 +66,8 @@ class TestPrintString(BaseTest):
         # Escaped identifiers must parse back to the original chain through the real
         # parser, not just the lenient parse_string_literal_text unescaper. Backtick
         # cases are the regression guard: doubled `` parses, backslash-escaped \` does not.
+        # The clickhouse case parses escape_clickhouse_identifier's output through the HogQL
+        # parser (same backtick-quoting grammar ClickHouse uses), not ClickHouse itself.
         samples = [
             "back`tick",
             "a``b",
