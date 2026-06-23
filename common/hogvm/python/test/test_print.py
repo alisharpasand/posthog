@@ -8,8 +8,7 @@ from common.hogvm.python.stl.print import escape_identifier
 
 class TestEscapeIdentifier:
     def test_doubles_embedded_backtick(self):
-        # The HogQL/Hog parsers only accept a doubled backtick inside a quoted identifier,
-        # never a backslash-escaped one, so the escaper must emit the doubled form.
+        # The HogQL/Hog parsers only accept a doubled backtick inside a quoted identifier, not a backslash-escaped one.
         assert escape_identifier("a`b") == "`a``b`"
 
     @parameterized.expand(

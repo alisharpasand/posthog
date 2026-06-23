@@ -198,7 +198,7 @@ class TestEscapePreservationOnParserOutput(BaseTest):
         self.assertGreaterEqual(len(context.values), 1)
 
     def test_identifier_with_backtick_is_backtick_escaped(self):
-        # HogQL accepts backtick-quoted identifiers with doubled inner backticks; printer re-emits backtick-wrapped with the inner backtick doubled, so the output round-trips back through the parser.
+        # The printer doubles the inner backtick so the identifier round-trips back through the parser.
         sql, _ = _print(self, parse_select("SELECT 1 AS `weird``name` FROM events"))
         self.assertIn("`weird``name`", sql)
 

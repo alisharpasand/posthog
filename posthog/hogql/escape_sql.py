@@ -22,7 +22,7 @@ escape_chars_map = {
     "\\": "\\\\",
 }
 singlequote_escape_chars_map = {**escape_chars_map, "'": "\\'"}
-# Backtick is doubled (`` ``), not backslash-escaped (`` \` ``): the production HogQL/ClickHouse parsers only accept the doubled form inside a quoted identifier, so doubling is what round-trips.
+# The HogQL/ClickHouse parsers only accept a doubled backtick inside a quoted identifier, not a backslash-escaped one.
 backquote_escape_chars_map = {**escape_chars_map, "`": "``"}
 
 

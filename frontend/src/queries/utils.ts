@@ -742,7 +742,7 @@ export function escapePropertyAsHogQLIdentifier(identifier: string): string {
     if (isQuoted(identifier)) {
         return identifier // This identifier is already quoted
     }
-    // Double any inner backtick so a backtick-wrapped identifier round-trips through the HogQL parser, which only accepts the doubled form (not `` \` ``).
+    // The HogQL parser only accepts a doubled backtick inside a quoted identifier, not a backslash-escaped one.
     return !identifier.includes('"') ? `"${identifier}"` : `\`${identifier.replaceAll('`', '``')}\``
 }
 
