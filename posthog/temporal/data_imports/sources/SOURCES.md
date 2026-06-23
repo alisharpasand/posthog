@@ -139,6 +139,7 @@ the row lists both.
 | okta              | HTTP                        | requests                                                        | ✅                          |
 | notion            | HTTP                        | requests                                                        | ✅                          |
 | omnisend          | HTTP                        | requests                                                        | ✅                          |
+| openweather       | HTTP                        | requests                                                        | ✅                          |
 | ortto             | HTTP                        | requests                                                        | ✅                          |
 | outbrain          | HTTP                        | requests                                                        | ✅                          |
 | paddle            | HTTP                        | requests                                                        | ✅                          |
@@ -515,7 +516,6 @@ doesn't conflict with concurrent PRs.
 - open_exchange_rates
 - openaq
 - openfda
-- openweather
 - opinion_stage
 - opsgenie
 - opuswatch
