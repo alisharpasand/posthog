@@ -55,6 +55,11 @@ pub async fn apply_quota_limits(
             if ev.result != EventResult::Ok {
                 continue;
             }
+            // Gateway-verified events are wallet-billed, not AIO-billed, so they
+            // must not be dropped by the llm_events quota.
+            if *resource == QuotaResource::LLMEvents && ev.is_gateway_verified {
+                continue;
+            }
             let info = EventInfo {
                 name: ev.event_name(),
                 has_product_tour_id: ev.has_property("product_tour_id"),
@@ -228,6 +233,7 @@ mod tests {
             ai_s3_region: "us-east-1".to_string(),
             ai_s3_access_key_id: None,
             ai_s3_secret_access_key: None,
+            ai_gateway_signing_secret: None,
             http1_header_read_timeout_ms: Some(5000),
             body_chunk_read_timeout_ms: None,
             body_read_chunk_size_kb: 256,
@@ -312,6 +318,7 @@ mod tests {
             details: None,
             destination: Destination::AnalyticsMain,
             force_disable_person_processing: false,
+            is_gateway_verified: false,
         }
     }
 
