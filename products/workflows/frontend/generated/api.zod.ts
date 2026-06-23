@@ -1899,6 +1899,9 @@ export const HogFlowsInvocationsCreateBody = /* @__PURE__ */ zod.object({
  * proxies through to the CDP worker, which reads matching rows from
  * ClickHouse, rehydrates from `invocation_globals`, and re-enqueues
  * onto cyclotron with `is_retry=1`.
+ *
+ * Because rerun replays historical event/person/group data, it requires
+ * `person:read` and `group:read` on top of `hog_flow:write`.
  */
 export const hogFlowsRerunCreateBodyFilterOneMaxAttemptsMax = 255
 

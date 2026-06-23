@@ -342,6 +342,15 @@ export const getHogFunctionsRerunCreateUrl = (projectId: string, id: string) => 
  * `invocation_globals`, and re-enqueues onto cyclotron. Each rerun
  * run reuses the original `invocation_id` with `is_retry=1` set on the
  * new lifecycle row so the UI can surface that it was a rerun.
+ *
+ * For source-webhook functions the worker strips `request.headers` from
+ * the rehydrated globals before re-enqueuing (see the rerun paginator):
+ * those headers carry the inbound sender's credentials, and replaying
+ * them through a reconfigured function would let a write-access user
+ * exfiltrate stored secrets.
+ *
+ * Because rerun replays historical event/person/group data, it requires
+ * `person:read` and `group:read` on top of `hog_function:write`.
  */
 export const hogFunctionsRerunCreate = async (
     projectId: string,
