@@ -351,4 +351,26 @@ mod tests {
         assert_eq!(map["$ai_gateway_verified"], Value::Bool(true));
         assert_eq!(map["$ai_gateway"], Value::Bool(true));
     }
+
+    #[test]
+    fn accepts_the_cross_language_known_answer() {
+        // The exact hex the Go signer produces for this input (ai-gateway
+        // internal/emitter/signer_test.go TestSigner_KnownAnswer). If either
+        // side's length-prefixed canonical form drifts, this fails and real
+        // gateway signatures stop verifying.
+        let sig = GatewaySignature {
+            signature: "a3de0bf6819919c28f6bf6e8b61f01d53d4f313bd57a67e4a31d3f4fc1161351"
+                .to_string(),
+            signed_at: "2026-05-28T10:00:00Z".to_string(),
+            request_id: "req-123".to_string(),
+        };
+        let now: DateTime<Utc> = "2026-05-28T10:00:00Z".parse().unwrap();
+        assert!(verify(
+            b"test-signing-secret",
+            "phc_test",
+            "user-7",
+            &sig,
+            now
+        ));
+    }
 }
