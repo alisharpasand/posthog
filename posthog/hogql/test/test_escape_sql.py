@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from posthog.test.base import BaseTest
+from posthog.test.base import BaseTest, ClickhouseTestMixin
 
 from parameterized import parameterized
 
@@ -15,6 +15,7 @@ from posthog.hogql.escape_sql import (
 )
 from posthog.hogql.parser import parse_expr
 
+from posthog.clickhouse.client.execute import sync_execute
 from posthog.models.utils import UUIDT
 
 _ROUNDTRIP_IDENTIFIER_SAMPLES = [
@@ -209,3 +210,13 @@ class TestPrintString(BaseTest):
         with self.assertRaises(ResolutionError) as context:
             escape_clickhouse_string({"a": 1, "b": 2})  # type: ignore
         self.assertTrue("SQLValueEscaper has no method visit_dict" in str(context.exception))
+
+
+class TestClickHouseIdentifierExecution(ClickhouseTestMixin, BaseTest):
+    @parameterized.expand([(f"sample-{i}", sample) for i, sample in enumerate(_ROUNDTRIP_IDENTIFIER_SAMPLES)])
+    def test_escaped_identifier_round_trips_through_clickhouse(self, _name, identifier):
+        # ClickHouse, not just the HogQL parser, is the real consumer of escape_clickhouse_identifier:
+        # it must parse the escaped alias and report the original name back.
+        escaped = escape_clickhouse_identifier(identifier)
+        _, columns = sync_execute(f"SELECT 1 AS {escaped}", with_column_types=True)
+        self.assertEqual(columns[0][0], identifier)
