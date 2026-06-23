@@ -13,6 +13,7 @@ import {
     convertDataTableNodeToDataVisualizationNode,
     escapeDottedHogQLIdentifier,
     escapeHogQLString,
+    escapePropertyAsHogQLIdentifier,
     hogql,
     supportsBarValueStacking,
 } from './utils'
@@ -98,6 +99,26 @@ describe('escapeHogQLString', () => {
         ['back\\slash', "'back\\\\slash'"],
     ])('escapes %s to %s', (input, expected) => {
         expect(escapeHogQLString(input)).toEqual(expected)
+    })
+})
+
+describe('escapePropertyAsHogQLIdentifier', () => {
+    it('leaves simple identifiers unquoted', () => {
+        expect(escapePropertyAsHogQLIdentifier('browser')).toEqual('browser')
+        expect(escapePropertyAsHogQLIdentifier('$browser')).toEqual('$browser')
+    })
+
+    it('double-quotes identifiers with special characters but no double quote', () => {
+        expect(escapePropertyAsHogQLIdentifier('order items')).toEqual('"order items"')
+    })
+
+    it('backtick-wraps identifiers containing a double quote', () => {
+        expect(escapePropertyAsHogQLIdentifier('a"b')).toEqual('`a"b`')
+    })
+
+    it('doubles inner backticks when an identifier has both a double quote and a backtick', () => {
+        // Backslash-escaping (`a"b\`c`) would be rejected by the HogQL parser; doubling round-trips.
+        expect(escapePropertyAsHogQLIdentifier('a"b`c')).toEqual('`a"b``c`')
     })
 })
 
