@@ -120,6 +120,13 @@ describe('escapePropertyAsHogQLIdentifier', () => {
         // Backslash-escaping (`a"b\`c`) would be rejected by the HogQL parser; doubling round-trips.
         expect(escapePropertyAsHogQLIdentifier('a"b`c')).toEqual('`a"b``c`')
     })
+
+    it('escapes backslashes so they survive the parser instead of forming an escape sequence', () => {
+        expect(escapePropertyAsHogQLIdentifier('a\\b')).toEqual('"a\\\\b"')
+        expect(escapePropertyAsHogQLIdentifier('end\\')).toEqual('"end\\\\"')
+        // A backslash alongside a double quote takes the backtick branch and still escapes both.
+        expect(escapePropertyAsHogQLIdentifier('a"\\b')).toEqual('`a"\\\\b`')
+    })
 })
 
 describe('escapeDottedHogQLIdentifier', () => {

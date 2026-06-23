@@ -742,8 +742,9 @@ export function escapePropertyAsHogQLIdentifier(identifier: string): string {
     if (isQuoted(identifier)) {
         return identifier // This identifier is already quoted
     }
-    // The HogQL parser only accepts a doubled backtick inside a quoted identifier, not a backslash-escaped one.
-    return !identifier.includes('"') ? `"${identifier}"` : `\`${identifier.replaceAll('`', '``')}\``
+    // Escape backslashes and double inner backticks — the HogQL parser rejects a backslash-escaped delimiter inside a quoted identifier.
+    const escaped = identifier.replaceAll('\\', '\\\\')
+    return !identifier.includes('"') ? `"${escaped}"` : `\`${escaped.replaceAll('`', '``')}\``
 }
 
 /** Quote each segment of a dotted HogQL reference independently. */
