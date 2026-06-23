@@ -126,6 +126,16 @@ describe('escapePropertyAsHogQLIdentifier', () => {
         expect(escapePropertyAsHogQLIdentifier('end\\')).toEqual('"end\\\\"')
         // A backslash alongside a double quote takes the backtick branch and still escapes both.
         expect(escapePropertyAsHogQLIdentifier('a"\\b')).toEqual('`a"\\\\b`')
+        // A backslash immediately before an inner backtick (which forces the backtick branch).
+        expect(escapePropertyAsHogQLIdentifier('a"b\\`c')).toEqual('`a"b\\\\``c`')
+    })
+
+    it('escapes control characters instead of emitting them raw', () => {
+        expect(escapePropertyAsHogQLIdentifier('a\tb')).toEqual('"a\\tb"')
+        expect(escapePropertyAsHogQLIdentifier('a\nb')).toEqual('"a\\nb"')
+        expect(escapePropertyAsHogQLIdentifier('a\bb')).toEqual('"a\\bb"')
+        // An embedded double quote forces the backtick branch; the control char is still escaped.
+        expect(escapePropertyAsHogQLIdentifier('a"\tb')).toEqual('`a"\\tb`')
     })
 })
 
