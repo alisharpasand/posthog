@@ -178,6 +178,7 @@ the row lists both.
 | snapchat_ads      | HTTP                        | requests + `rest_source.RESTClient`                             | ✅                          |
 | snowflake         | DB protocol                 | snowflake-connector-python                                      | ➖                          |
 | square            | HTTP                        | requests                                                        | ✅                          |
+| squarespace       | HTTP                        | requests                                                        | ✅                          |
 | stripe            | HTTP (vendor SDK) + Webhook | stripe (StripeClient + RequestsClient) + `WebhookSourceManager` | ✅ (pull) / ➖ (webhook)    |
 | supabase          | DB protocol                 | psycopg (delegates to PostgresSource)                           | ➖                          |
 | surveymonkey      | HTTP                        | requests                                                        | ✅                          |
@@ -631,7 +632,6 @@ doesn't conflict with concurrent PRs.
 - split_io
 - spotify_ads
 - spotlercrm
-- squarespace
 - statsig
 - statuspage
 - stigg
