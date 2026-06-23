@@ -65,7 +65,7 @@ pub async fn process_batch(
 
     // Verify gateway provenance before the quota limiter so verified events can
     // be exempted from the llm_events meter (they're wallet-billed, not AIO).
-    apply_gateway_provenance(state, context, &mut events);
+    apply_gateway_provenance(state, context, &mut events).await;
 
     crate::v1::quota_limiter_shim::apply_quota_limits(
         &state.quota_limiter,
@@ -135,7 +135,11 @@ pub async fn process_batch(
 // `$ai_*` events are considered — the only namespace the llm_events meter counts
 // — and the strip path skips the parse unless the raw props plausibly carry a
 // gateway key, so ordinary traffic stays off the parse hot path.
-fn apply_gateway_provenance(state: &router::State, context: &Context, events: &mut [WrappedEvent]) {
+async fn apply_gateway_provenance(
+    state: &router::State,
+    context: &Context,
+    events: &mut [WrappedEvent],
+) {
     use crate::v1::gateway_provenance as gp;
 
     let secret = state
@@ -143,13 +147,14 @@ fn apply_gateway_provenance(state: &router::State, context: &Context, events: &m
         .as_deref()
         .filter(|s| !s.is_empty());
     let now = context.server_received_at;
+    let sig = context.gateway_signature.as_ref();
 
     for ev in events.iter_mut() {
         if ev.result != EventResult::Ok || !ev.event.event.starts_with("$ai_") {
             continue;
         }
 
-        let verified = match (secret, context.gateway_signature.as_ref()) {
+        let mut trusted = match (secret, sig) {
             (Some(secret), Some(sig)) => gp::verify(
                 secret.as_bytes(),
                 &context.api_token,
@@ -160,7 +165,17 @@ fn apply_gateway_provenance(state: &router::State, context: &Context, events: &m
             _ => false,
         };
 
-        if verified {
+        // A valid, fresh signature is single-use: a replayed request_id within the
+        // freshness window must not mark further events verified.
+        if trusted {
+            if let Some(sig) = sig {
+                if gp::is_replay(&state.redis, &context.api_token, &sig.request_id).await {
+                    trusted = false;
+                }
+            }
+        }
+
+        if trusted {
             if let Some(props) = gp::stamp_verified_raw(&ev.event.properties) {
                 ev.event.properties = props;
                 ev.is_gateway_verified = true;

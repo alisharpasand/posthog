@@ -10,10 +10,15 @@
 //
 // A valid, fresh signature stamps a trusted `$ai_gateway_verified` and the event
 // is exempted from the limiter; anything else has its whole `$ai_gateway*`
-// namespace stripped so a forged marker can't survive.
+// namespace stripped so a forged marker can't survive. The signed request_id is
+// a single-use nonce (Redis), so a captured signature can't be replayed within
+// the freshness window to mark further events verified.
+
+use std::sync::Arc;
 
 use axum::http::HeaderMap;
 use chrono::{DateTime, Utc};
+use common_redis::Client;
 use hmac::{Hmac, Mac};
 use serde_json::value::RawValue;
 use serde_json::{Map, Value};
@@ -32,6 +37,11 @@ const VERIFIED_PROPERTY: &str = "$ai_gateway_verified";
 /// event, so there's no ingestion lag and wall-clock now is the capture time;
 /// the window only absorbs gateway/capture clock skew.
 pub const FRESHNESS_WINDOW_SECS: i64 = 5 * 60;
+
+/// Nonce TTL. A signature stays fresh for `signed_at ± FRESHNESS_WINDOW`, so a
+/// nonce first seen at the window's open edge must be remembered until its close
+/// edge: twice the window.
+pub const DEDUP_TTL_SECS: u64 = 2 * 5 * 60;
 
 /// The provenance signature carried on the request headers.
 #[derive(Debug, Clone)]
@@ -147,6 +157,38 @@ pub fn stamp_verified_raw(properties: &RawValue) -> Option<Box<RawValue>> {
 
 fn reserialize(map: Map<String, Value>) -> Option<Box<RawValue>> {
     RawValue::from_string(serde_json::to_string(&Value::Object(map)).ok()?).ok()
+}
+
+/// Redis key a request_id nonce is recorded under. Scoped by token so one
+/// project's nonce can't shadow another's.
+pub fn nonce_key(token: &str, request_id: &str) -> String {
+    format!("@posthog/ai-gateway/nonce/{token}/{request_id}")
+}
+
+/// Records the request_id as a single-use nonce and reports whether it was
+/// already seen (a replay). An empty request_id can't be deduped, so it's never
+/// a replay. A Redis error fails open (not a replay) so a blip can't strip the
+/// marker off legitimate gateway events and double-bill them.
+pub async fn is_replay(
+    redis: &Arc<dyn Client + Send + Sync>,
+    token: &str,
+    request_id: &str,
+) -> bool {
+    if request_id.is_empty() {
+        return false;
+    }
+    match redis
+        .set_nx_ex(
+            nonce_key(token, request_id),
+            "1".to_string(),
+            DEDUP_TTL_SECS,
+        )
+        .await
+    {
+        Ok(true) => false, // first sighting
+        Ok(false) => true, // already recorded — replay
+        Err(_) => false,   // store unavailable — fail open
+    }
 }
 
 #[cfg(test)]
@@ -350,5 +392,33 @@ mod tests {
         let map: Map<String, Value> = serde_json::from_str(stamped.get()).unwrap();
         assert_eq!(map["$ai_gateway_verified"], Value::Bool(true));
         assert_eq!(map["$ai_gateway"], Value::Bool(true));
+    }
+
+    fn mock(client: common_redis::MockRedisClient) -> Arc<dyn Client + Send + Sync> {
+        Arc::new(client)
+    }
+
+    #[tokio::test]
+    async fn first_sighting_is_not_a_replay_but_a_reuse_is() {
+        use common_redis::MockRedisClient;
+        let key = nonce_key(TOKEN, "req-1");
+        let first = mock(MockRedisClient::new().set_nx_ex_ret(&key, Ok(true)));
+        assert!(!is_replay(&first, TOKEN, "req-1").await);
+        let reused = mock(MockRedisClient::new().set_nx_ex_ret(&key, Ok(false)));
+        assert!(is_replay(&reused, TOKEN, "req-1").await);
+    }
+
+    #[tokio::test]
+    async fn empty_request_id_is_never_a_replay() {
+        let redis = mock(common_redis::MockRedisClient::new());
+        assert!(!is_replay(&redis, TOKEN, "").await);
+    }
+
+    #[tokio::test]
+    async fn store_error_fails_open() {
+        // An unconfigured key returns an error from the mock; is_replay must
+        // treat it as not-a-replay so a Redis blip can't strip the marker.
+        let redis = mock(common_redis::MockRedisClient::new());
+        assert!(!is_replay(&redis, TOKEN, "req-1").await);
     }
 }
