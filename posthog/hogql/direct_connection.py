@@ -5,6 +5,7 @@ from uuid import UUID
 from posthog.schema import HogQLQueryModifiers
 
 from posthog.hogql.database.database import Database
+from posthog.hogql.direct_sql import is_direct_capable
 from posthog.hogql.timings import HogQLTimings
 
 from posthog.rbac.user_access_control import UserAccessControl
@@ -36,12 +37,11 @@ def get_direct_connection_source(
         ExternalDataSource.objects.filter(
             team_id=team.pk,
             id=source_uuid,
-            access_method=ExternalDataSource.AccessMethod.DIRECT,
         )
         .exclude(deleted=True)
         .first()
     )
-    if source is None:
+    if source is None or not is_direct_capable(source):
         return None
 
     if user is not None and not UserAccessControl(user=user, team=team).check_access_level_for_object(

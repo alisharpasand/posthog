@@ -1103,19 +1103,22 @@ class Database(BaseModel):
             )
 
         with timings.measure("database", emit_span=True):
+            # Function-local: keeps the direct-SQL drivers (psycopg/pymysql) off the django.setup() path.
+            from posthog.hogql.direct_sql import is_direct_capable  # noqa: PLC0415
+
             direct_connection_metadata: dict[str, Any] | None = None
             if connection_id is not None:
                 direct_source = (
                     ExternalDataSource.objects.filter(
                         team_id=team.pk,
                         id=connection_id,
-                        access_method=ExternalDataSource.AccessMethod.DIRECT,
                     )
+                    .exclude(deleted=True)
                     .select_related(None)
-                    .only("connection_metadata")
+                    .only("connection_metadata", "access_method", "direct_query_enabled", "source_type")
                     .first()
                 )
-                if direct_source is not None:
+                if direct_source is not None and is_direct_capable(direct_source):
                     direct_connection_metadata = direct_source.connection_metadata
 
         with timings.measure("filter_system_tables_for_user", emit_span=True):
@@ -1208,7 +1211,7 @@ class Database(BaseModel):
                     # created_by is hydrated for the warehouse access-control creator check
                     .select_related("created_by")
                     # credential/external_data_source attached in bulk below, not joined per row; the
-                    # access_method filter still joins the source for its WHERE without hydrating it.
+                    # url_pattern exclusion below reads a column on the table itself, so it adds no join.
                     # Deterministic tiebreak when two live tables share a name: newest wins, since
                     # name collisions resolve first-come-first-served when added to the table tree.
                     .order_by("-created_at")
@@ -1218,9 +1221,9 @@ class Database(BaseModel):
                 if is_direct_query:
                     tables_query = tables_query.filter(external_data_source_id=connection_id)
                 else:
-                    tables_query = tables_query.exclude(
-                        external_data_source__access_method=ExternalDataSource.AccessMethod.DIRECT
-                    )
+                    # Physical direct-connection tables (pure-direct sources) carry a `direct://` url_pattern;
+                    # keying off it keeps a dual-mode source's synced tables in the warehouse catalog.
+                    tables_query = tables_query.exclude(url_pattern__startswith="direct://")
 
                 warehouse_tables: list[DataWarehouseTable] = list(tables_query)
                 # Direct-query mode builds the direct-postgres tables, which read source.job_inputs, so
@@ -1502,11 +1505,7 @@ class Database(BaseModel):
             with timings.measure("build_tables", emit_span=True):
                 sync_warnings_now = datetime.now(UTC)
                 for table in sources.warehouse_tables:
-                    if (
-                        not database._is_direct_query()
-                        and table.external_data_source
-                        and table.external_data_source.access_method == ExternalDataSource.AccessMethod.DIRECT
-                    ):
+                    if not database._is_direct_query() and table.url_pattern.startswith("direct://"):
                         continue
 
                     if (
@@ -1543,12 +1542,7 @@ class Database(BaseModel):
                                 table_for_key = s3_table if index == 0 else s3_table.model_copy(deep=True)
                                 table_chain = table_key.split(".")
                                 table_conflict_mode: Literal["override", "ignore"] = (
-                                    "override"
-                                    if database._is_direct_query()
-                                    and table.external_data_source
-                                    and table.external_data_source.access_method
-                                    == ExternalDataSource.AccessMethod.DIRECT
-                                    else "ignore"
+                                    "override" if database._is_direct_query() else "ignore"
                                 )
 
                                 # For a chain of type a.b.c, we want to create a nested table node
@@ -1562,7 +1556,7 @@ class Database(BaseModel):
                                 joined_table_chain = ".".join(table_chain)
                                 table_for_key.name = joined_table_chain
                                 warehouse_tables_dot_notation_mapping[joined_table_chain] = table.name
-                                if table.external_data_source.access_method == ExternalDataSource.AccessMethod.DIRECT:
+                                if database._is_direct_query():
                                     database._direct_access_warehouse_table_names.add(joined_table_chain)
                                 if index == 0:
                                     primary_table = table_for_key
@@ -2146,10 +2140,12 @@ def _strip_external_source_prefix(source: ExternalDataSource, table_name: str) -
 
 
 def _get_warehouse_table_keys(warehouse_table: DataWarehouseTable, *, direct_query: bool) -> list[str]:
-    source = warehouse_table.external_data_source
-    if source is not None and source.access_method == ExternalDataSource.AccessMethod.DIRECT and direct_query:
+    # In direct-connection mode the table is addressed by its raw name; the prefixed warehouse name
+    # only applies when browsing the synced catalog.
+    if direct_query:
         return [warehouse_table.name]
 
+    source = warehouse_table.external_data_source
     return [get_data_warehouse_table_name(source, warehouse_table.name)]
 
 
@@ -2158,8 +2154,11 @@ def _should_include_connection_table(
     *,
     connection_id: str,
 ) -> bool:
+    # Function-local: keeps the direct-SQL drivers (psycopg/pymysql) off the django.setup() path.
+    from posthog.hogql.direct_sql import is_direct_capable  # noqa: PLC0415
+
     source = warehouse_table.external_data_source
-    if source is None or source.access_method != ExternalDataSource.AccessMethod.DIRECT:
+    if source is None or not is_direct_capable(source):
         return False
 
     if str(warehouse_table.external_data_source_id) != connection_id:

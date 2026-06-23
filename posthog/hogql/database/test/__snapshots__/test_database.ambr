@@ -356,8 +356,7 @@
                   AND "posthog_datawarehousetable"."deleted" IS NOT NULL)
          AND NOT ("posthog_externaldatasource"."deleted"
                   AND "posthog_externaldatasource"."deleted" IS NOT NULL)
-         AND NOT ("posthog_externaldatasource"."access_method" = 'direct'
-                  AND "posthog_externaldatasource"."access_method" IS NOT NULL))
+         AND NOT ("posthog_datawarehousetable"."url_pattern"::text LIKE 'direct://%'))
   ORDER BY "posthog_datawarehousetable"."created_at" DESC
   '''
 # ---
@@ -688,8 +687,7 @@
                   AND "posthog_datawarehousetable"."deleted" IS NOT NULL)
          AND NOT ("posthog_externaldatasource"."deleted"
                   AND "posthog_externaldatasource"."deleted" IS NOT NULL)
-         AND NOT ("posthog_externaldatasource"."access_method" = 'direct'
-                  AND "posthog_externaldatasource"."access_method" IS NOT NULL))
+         AND NOT ("posthog_datawarehousetable"."url_pattern"::text LIKE 'direct://%'))
   ORDER BY "posthog_datawarehousetable"."created_at" DESC
   '''
 # ---
