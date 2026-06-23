@@ -17,7 +17,7 @@ from posthog.api.github_callback.types import (
     github_oauth_redirect_uri,
     is_valid_github_installation_id,
 )
-from posthog.models import User
+from posthog.models import Team, User
 from posthog.models.integration import GitHubInstallationAccessFetchError, GitHubIntegration, Integration
 from posthog.models.user_integration import (
     UserIntegration,
@@ -73,9 +73,12 @@ def finish_personal(request: HttpRequest) -> FinishResult:
                 return _error("missing_params")
             if authorize_state.team_id is None:
                 return _error("invalid_state")
-            # `user.teams` membership is no longer re-checked here — losing access between
-            # OAuth-trigger and OAuth-return is a rare timing edge case. If it happens,
-            # `integration_from_installation_id` below will raise rather than emit a typed code.
+            # Re-check access at callback time: admin-level access is required to write a team
+            # integration (matching setup initiation), and a user demoted or removed from the team
+            # between OAuth-trigger and return must not complete it via a still-valid recovery state.
+            team = Team.objects.select_related("organization").filter(id=authorize_state.team_id).first()
+            if team is None or not state.has_team_management_access(user, team):
+                return _error("insufficient_permissions")
             installation_ids = [installation_id]
         case FlowKind.OAUTH_DISCOVER:
             pass
