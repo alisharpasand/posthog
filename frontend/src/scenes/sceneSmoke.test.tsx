@@ -43,6 +43,7 @@ const HIGH_TRAFFIC_SCENES: [name: string, path: string][] = [
     ['activity explore', '/activity/explore'],
     ['error tracking', '/error_tracking'],
     ['sql editor', '/sql'],
+    ['engineering analytics', '/engineering-analytics'],
     ['project settings', '/settings/project'],
 ]
 
