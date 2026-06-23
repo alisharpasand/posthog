@@ -179,8 +179,7 @@ def get_direct_external_data_source_for_connection(
     except ValueError:
         return None
 
-    # Function-local: capability imports this module, and it pulls the direct-SQL drivers that must
-    # stay off the django.setup() path.
+    # Function-local: capability imports this module (circular) and pulls drivers that must stay off django.setup().
     from posthog.hogql.direct_sql import is_direct_capable  # noqa: PLC0415
 
     source = (
