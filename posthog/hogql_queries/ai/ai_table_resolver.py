@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
-import posthoganalytics
 from prometheus_client import Counter, Histogram
 
 from posthog.hogql import ast
@@ -11,6 +10,7 @@ from posthog.hogql.query import execute_hogql_query
 from posthog.clickhouse.query_tagging import Product, tag_queries, tags_context
 from posthog.hogql_queries.ai.ai_column_rewriter import rewrite_expr_for_events_table, rewrite_query_for_events_table
 from posthog.hogql_queries.ai.ai_property_rewriter import rewrite_expr_for_ai_events_table
+from posthog.ph_client import feature_enabled_or_false
 
 AI_EVENTS_QUERY_TOTAL = Counter(
     "posthog_ai_events_query_total",
@@ -40,7 +40,7 @@ def is_ai_events_enabled(team: Team) -> bool:
     When disabled, all single-trace runners skip the ai_events attempt
     and query the events table directly.
     """
-    return posthoganalytics.feature_enabled(
+    return feature_enabled_or_false(
         "ai-events-table-rollout",
         str(team.id),
         groups={"organization": str(team.organization_id)},
