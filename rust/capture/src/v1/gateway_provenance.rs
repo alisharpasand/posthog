@@ -117,10 +117,16 @@ pub fn strip_gateway(props: &mut Map<String, Value>) {
 
 /// Cheap pre-check on the raw bytes: does the property object plausibly contain a
 /// `$ai_gateway*` key? Lets the hot path skip the parse for the common case (an
-/// SDK `$ai_*` event that never went through the gateway). A string value
-/// starting `$ai_gateway` can false-positive, which only costs a wasted parse.
+/// SDK `$ai_*` event that never went through the gateway).
+///
+/// JSON `\u` escapes can encode `$ai_gateway` as bytes that don't contain it
+/// literally (e.g. `"$ai_gateway_verified"`), which serde decodes back to
+/// the real key on parse — so any `\u` escape also forces the full parse rather
+/// than risk an obfuscated forged marker slipping through unstripped. Both checks
+/// can false-positive, which only costs a wasted parse.
 pub fn has_gateway_props(properties: &RawValue) -> bool {
-    properties.get().contains("\"$ai_gateway")
+    let raw = properties.get();
+    raw.contains("\"$ai_gateway") || raw.contains("\\u")
 }
 
 /// Strips the `$ai_gateway*` namespace from raw properties. Returns `None` when
@@ -336,11 +342,33 @@ mod tests {
     }
 
     #[test]
+    fn has_gateway_props_catches_a_unicode_escaped_key() {
+        // "\\u0024" decodes to "$", so this key parses to "$ai_gateway_verified"
+        // even though the raw bytes lack the literal prefix. The \\u fallback must
+        // catch it so the strip path isn't skipped on a forged escaped marker.
+        assert!(has_gateway_props(&raw(
+            r#"{"\u0024ai_gateway_verified": true}"#
+        )));
+    }
+
+    #[test]
     fn strip_gateway_raw_returns_none_when_nothing_to_strip() {
         assert!(strip_gateway_raw(&raw(r#"{"$ai_model": "claude"}"#)).is_none());
         let stripped =
             strip_gateway_raw(&raw(r#"{"$ai_gateway": true, "$ai_model": "x"}"#)).unwrap();
         assert!(!stripped.get().contains("$ai_gateway"));
+        assert!(stripped.get().contains("$ai_model"));
+    }
+
+    #[test]
+    fn strip_gateway_raw_strips_a_unicode_escaped_key() {
+        // The escaped key decodes to "$ai_gateway_verified" on parse, so strip
+        // (which matches decoded keys) removes it like any other gateway prop.
+        let stripped = strip_gateway_raw(&raw(
+            r#"{"\u0024ai_gateway_verified": true, "$ai_model": "x"}"#,
+        ))
+        .unwrap();
+        assert!(!stripped.get().contains("ai_gateway"));
         assert!(stripped.get().contains("$ai_model"));
     }
 
