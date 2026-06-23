@@ -509,6 +509,18 @@ class HogFunctionViewSet(
     log_source = "hog_function"
     app_source = "hog_function"
 
+    def dangerously_get_required_scopes(self, request, view) -> Optional[list[str]]:
+        # Rerun re-executes stored invocations — it replays up to 30 days of
+        # persisted event/person/group data through the current (possibly
+        # reconfigured) function. A `hog_function:write`-only token could use
+        # that to route historical data it can't otherwise read to a destination
+        # it controls, so gate rerun on person:read + group:read on top of write
+        # — the same data-read scopes the invocation-inspection paths require.
+        # (`hog_function:read` would be a no-op since :write already satisfies it.)
+        if self.action == "rerun":
+            return ["hog_function:write", "person:read", "group:read"]
+        return None
+
     def get_serializer_class(self) -> type[BaseSerializer]:
         if self.action == "list":
             # Use full serializer (including inputs, mappings, etc.) when ?full=true
@@ -661,6 +673,9 @@ class HogFunctionViewSet(
         those headers carry the inbound sender's credentials, and replaying
         them through a reconfigured function would let a write-access user
         exfiltrate stored secrets.
+
+        Because rerun replays historical event/person/group data, it requires
+        `person:read` and `group:read` on top of `hog_function:write`.
         """
         hog_function = self.get_object()
 

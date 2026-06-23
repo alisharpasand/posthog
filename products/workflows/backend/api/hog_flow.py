@@ -1141,6 +1141,15 @@ class HogFlowViewSet(TeamAndOrgViewSetMixin, LogEntryMixin, AppMetricsMixin, vie
         # running tests while editing is unaffected.
         if self.action == "invocations":
             return ["hog_flow:write", "group:read"]
+        # Rerun re-executes stored invocations — it replays up to 30 days of
+        # persisted event/person/group data through the current (possibly
+        # reconfigured) workflow. A `hog_flow:write`-only token could use that to
+        # route historical data it can't otherwise read to a destination it
+        # controls, so gate rerun on person:read + group:read on top of write —
+        # the same data-read scopes invocation inspection requires. (`hog_flow:read`
+        # would be a no-op since :write already satisfies it.)
+        if self.action == "rerun":
+            return ["hog_flow:write", "person:read", "group:read"]
         return None
 
     def get_serializer_class(self) -> type[BaseSerializer]:
@@ -1191,6 +1200,9 @@ class HogFlowViewSet(TeamAndOrgViewSetMixin, LogEntryMixin, AppMetricsMixin, vie
         proxies through to the CDP worker, which reads matching rows from
         ClickHouse, rehydrates from `invocation_globals`, and re-enqueues
         onto cyclotron with `is_retry=1`.
+
+        Because rerun replays historical event/person/group data, it requires
+        `person:read` and `group:read` on top of `hog_flow:write`.
         """
         hog_flow = self.get_object()
 
