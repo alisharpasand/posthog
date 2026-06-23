@@ -25653,6 +25653,7 @@ export namespace Schemas {
       harness: string;
       sessions: number;
       total_calls: number;
+      users: number;
     }
 
     export interface MCPHarnessBreakdownQueryResponse {
