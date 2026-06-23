@@ -3018,7 +3018,7 @@ class SystemeSourceConfig(config.Config):
 
 @config.config
 class TMDbSourceConfig(config.Config):
-    pass
+    api_key: str
 
 
 @config.config
