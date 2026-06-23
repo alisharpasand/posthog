@@ -353,7 +353,7 @@ export class HogInvocationResultsService {
             firstScheduledAt = scheduledAtIso
             if (isHogFunctionInvocation(invocation)) {
                 invocation.state.firstScheduledAt = scheduledAtIso
-            } else if (isHogFlowInvocation(invocation)) {
+            } else if (isHogFlowInvocation(invocation) && invocation.state) {
                 invocation.state.firstScheduledAt = scheduledAtIso
             }
         }
