@@ -93,11 +93,13 @@ class MCPHarnessBreakdownQueryRunner(AnalyticsQueryRunner[MCPHarnessBreakdownQue
                 count() AS total_calls,
                 countIf(is_error) AS errors,
                 round(countIf(is_error) * 100.0 / count(), 1) AS error_rate_pct,
-                countDistinctIf(session_id, session_id != '') AS sessions
+                countDistinctIf(session_id, session_id != '') AS sessions,
+                count(DISTINCT distinct_id) AS users
             FROM (
                 SELECT
                     {token} AS h,
                     $session_id AS session_id,
+                    distinct_id,
                     toBool(properties.$mcp_is_error) AS is_error
                 FROM events
                 WHERE {where}
@@ -135,6 +137,7 @@ class MCPHarnessBreakdownQueryRunner(AnalyticsQueryRunner[MCPHarnessBreakdownQue
                 errors=int(row[2] or 0),
                 error_rate_pct=float(row[3] or 0),
                 sessions=int(row[4] or 0),
+                users=int(row[5] or 0),
             )
             for row in (response.results or [])
         ]

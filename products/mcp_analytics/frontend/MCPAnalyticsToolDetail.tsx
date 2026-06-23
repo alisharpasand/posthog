@@ -614,9 +614,9 @@ export function MCPAnalyticsToolDetail({ toolName }: { toolName: string }): JSX.
                                 header: 'Harness',
                                 expand: true,
                                 render: (r) => {
-                                    const raw = String(r[0] ?? '')
-                                    return raw ? (
-                                        <HarnessPill category={categorizeHarness(raw)} title={raw} />
+                                    const label = String(r[0] ?? '')
+                                    return label ? (
+                                        <HarnessPill category={label} title={label} />
                                     ) : (
                                         <span className="text-muted">Unknown</span>
                                     )

@@ -26485,9 +26485,12 @@
                 },
                 "total_calls": {
                     "$ref": "#/definitions/integer"
+                },
+                "users": {
+                    "$ref": "#/definitions/integer"
                 }
             },
-            "required": ["harness", "total_calls", "errors", "error_rate_pct", "sessions"],
+            "required": ["harness", "total_calls", "errors", "error_rate_pct", "sessions", "users"],
             "type": "object"
         },
         "MCPHarnessBreakdownQuery": {

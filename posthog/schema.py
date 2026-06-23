@@ -5649,6 +5649,7 @@ class MCPHarnessBreakdownItem(BaseModel):
     )
     sessions: int
     total_calls: int
+    users: int
 
 
 class MarketingAnalyticsItem(BaseModel):

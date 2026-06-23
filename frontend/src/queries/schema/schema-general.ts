@@ -2511,6 +2511,7 @@ export interface MCPHarnessBreakdownItem {
     errors: integer
     error_rate_pct: number
     sessions: integer
+    users: integer
 }
 
 export interface MCPHarnessBreakdownQueryResponse extends AnalyticsQueryResponseBase {

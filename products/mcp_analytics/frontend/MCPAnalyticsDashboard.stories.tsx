@@ -42,11 +42,11 @@ const SESSION_RESULTS = [
 // MCPHarnessBreakdownQuery returns already-labelled rows (the runner resolves the
 // harness server-side), so these are customer labels, not raw client strings.
 const HARNESS_RESULTS = [
-    { harness: 'Claude Code', total_calls: 6200, errors: 240, error_rate_pct: 3.9, sessions: 820 },
-    { harness: 'Cursor', total_calls: 2100, errors: 96, error_rate_pct: 4.6, sessions: 410 },
-    { harness: 'OpenAI Codex', total_calls: 980, errors: 71, error_rate_pct: 7.2, sessions: 180 },
-    { harness: 'Claude.ai', total_calls: 760, errors: 22, error_rate_pct: 2.9, sessions: 240 },
-    { harness: 'VS Code', total_calls: 540, errors: 12, error_rate_pct: 2.2, sessions: 120 },
+    { harness: 'Claude Code', total_calls: 6200, errors: 240, error_rate_pct: 3.9, sessions: 820, users: 610 },
+    { harness: 'Cursor', total_calls: 2100, errors: 96, error_rate_pct: 4.6, sessions: 410, users: 320 },
+    { harness: 'OpenAI Codex', total_calls: 980, errors: 71, error_rate_pct: 7.2, sessions: 180, users: 140 },
+    { harness: 'Claude.ai', total_calls: 760, errors: 22, error_rate_pct: 2.9, sessions: 240, users: 200 },
+    { harness: 'VS Code', total_calls: 540, errors: 12, error_rate_pct: 2.2, sessions: 120, users: 90 },
 ]
 
 const SESSION_LIST = {

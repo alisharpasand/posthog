@@ -127,10 +127,12 @@ class TestMCPHarnessBreakdownQueryRunner(_MCPAnalyticsTeamScopedTestMixin, Click
         assert "Cowork" in by_harness
         assert "Claude.ai" not in by_harness
 
-    def test_aggregates_calls_errors_and_sessions(self) -> None:
-        self._emit(properties={"mcp_session_client_name": "codex-mcp-client"}, session_id="a", is_error=False)
-        self._emit(properties={"mcp_session_client_name": "codex-mcp-client"}, session_id="a", is_error=True)
-        self._emit(properties={"mcp_session_client_name": "codex-mcp-client"}, session_id="b", is_error=False)
+    def test_aggregates_calls_errors_sessions_and_users(self) -> None:
+        self._emit(properties={"mcp_session_client_name": "codex-mcp-client"}, session_id="a", distinct_id="d1")
+        self._emit(
+            properties={"mcp_session_client_name": "codex-mcp-client"}, session_id="a", distinct_id="d1", is_error=True
+        )
+        self._emit(properties={"mcp_session_client_name": "codex-mcp-client"}, session_id="b", distinct_id="d2")
         flush_persons_and_events()
 
         row = self._breakdown()["OpenAI Codex"]
@@ -138,6 +140,7 @@ class TestMCPHarnessBreakdownQueryRunner(_MCPAnalyticsTeamScopedTestMixin, Click
         assert row.total_calls == 3
         assert row.errors == 1
         assert row.sessions == 2
+        assert row.users == 2
         assert row.error_rate_pct == 33.3
 
     def test_date_range_excludes_older_events(self) -> None:
