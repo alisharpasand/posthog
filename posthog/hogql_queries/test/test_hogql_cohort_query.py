@@ -2079,64 +2079,89 @@ class TestHogQLRealtimeCohortQuery(ClickhouseTestMixin, APIBaseTest):
         finally:
             sync_execute("DROP TABLE IF EXISTS precalculated_person_properties")
 
-    def test_nested_boolean_single_scan_membership(self) -> None:
-        """Execute the nested-boolean single scan and assert membership for `(A AND B) OR (C AND D)`.
+    @parameterized.expand(["or_at_top", "and_at_top"])
+    def test_nested_boolean_single_scan_membership(self, shape: str) -> None:
+        """Execute the nested-boolean single scan and assert membership for both outer combinators.
 
-        This shape used to fall through to the INTERSECT/UNION DISTINCT path (the OOM source); the
-        boolean-tree single scan must return the same person set without those set operations.
+        `(A AND B) OR (C AND D)` exercises the OR-at-top combinator (ORing sub-group results);
+        `(A OR B) AND (C OR D)` exercises AND-at-top (ANDing sub-groups, ORing maxIf leaves within).
+        Both used to fall through to the INTERSECT/UNION DISTINCT path (the OOM source); the tree
+        single scan must return the same set without those set operations. Each shape also seeds a
+        revoked condition (True then a later False) to verify the argMax → maxIf(...) = 1 chain
+        excludes a stale match rather than counting the earlier True.
         """
+
+        def leaf(key: str, condition_hash: str) -> dict:
+            return {
+                "key": key,
+                "type": "person",
+                "value": "x",
+                "negation": False,
+                "operator": "exact",
+                "conditionHash": condition_hash,
+            }
+
         sync_execute(_PRECALCULATED_PERSON_PROPERTIES_TEST_DDL)
         sync_execute("TRUNCATE TABLE precalculated_person_properties")
         try:
-            ab, cd, c_only, a_only = uuid4(), uuid4(), uuid4(), uuid4()
-            self._seed_precalculated_person_properties(
-                [
-                    (ab, "exec_A", True),
-                    (ab, "exec_B", True),  # matches first branch
-                    (cd, "exec_C", True),
-                    (cd, "exec_D", True),  # matches second branch
-                    (c_only, "exec_C", True),  # half of second branch only
-                    (a_only, "exec_A", True),  # half of first branch only
-                ]
-            )
+            in_first, in_second, half_first, half_second, revoked = (uuid4() for _ in range(5))
 
-            def leaf(key: str, condition_hash: str) -> dict:
-                return {
-                    "key": key,
-                    "type": "person",
-                    "value": "x",
-                    "negation": False,
-                    "operator": "exact",
-                    "conditionHash": condition_hash,
+            if shape == "or_at_top":
+                seed = [
+                    (in_first, "exec_A", True),
+                    (in_first, "exec_B", True),  # A AND B → first branch
+                    (in_second, "exec_C", True),
+                    (in_second, "exec_D", True),  # C AND D → second branch
+                    (half_first, "exec_A", True),  # A without B
+                    (half_second, "exec_C", True),  # C without D
+                    (revoked, "exec_A", True),
+                    (revoked, "exec_A", False),  # A revoked (latest = False)
+                    (revoked, "exec_B", True),  # B holds, but stale A must fail the AND branch
+                ]
+                inner = {
+                    "type": "OR",
+                    "values": [
+                        {"type": "AND", "values": [leaf("k1", "exec_A"), leaf("k2", "exec_B")]},
+                        {"type": "AND", "values": [leaf("k3", "exec_C"), leaf("k4", "exec_D")]},
+                    ],
+                }
+            else:  # and_at_top: (A OR B) AND (C OR D)
+                seed = [
+                    (in_first, "exec_A", True),
+                    (in_first, "exec_C", True),  # (A) AND (C)
+                    (in_second, "exec_B", True),
+                    (in_second, "exec_D", True),  # (B) AND (D)
+                    (half_first, "exec_A", True),  # first group only, no C/D
+                    (half_second, "exec_C", True),
+                    (half_second, "exec_D", True),  # second group only, no A/B
+                    (revoked, "exec_A", True),
+                    (revoked, "exec_A", False),  # A revoked (latest = False)
+                    (revoked, "exec_C", True),  # C holds, but stale A leaves first group unsatisfied
+                ]
+                inner = {
+                    "type": "AND",
+                    "values": [
+                        {"type": "OR", "values": [leaf("k1", "exec_A"), leaf("k2", "exec_B")]},
+                        {"type": "OR", "values": [leaf("k3", "exec_C"), leaf("k4", "exec_D")]},
+                    ],
                 }
 
+            self._seed_precalculated_person_properties(seed)
             cohort = Cohort.objects.create(
                 team=self.team,
-                name="nested",
-                filters={
-                    "properties": {
-                        "type": "OR",
-                        "values": [
-                            {
-                                "type": "OR",
-                                "values": [
-                                    {"type": "AND", "values": [leaf("k1", "exec_A"), leaf("k2", "exec_B")]},
-                                    {"type": "AND", "values": [leaf("k3", "exec_C"), leaf("k4", "exec_D")]},
-                                ],
-                            }
-                        ],
-                    }
-                },
+                name=f"nested-{shape}",
+                filters={"properties": {"type": "OR", "values": [inner]}},
             )
             query_str = HogQLRealtimeCohortQuery(cohort=cohort).query_str("clickhouse")
             self.assertNotIn("INTERSECT DISTINCT", query_str)
             self.assertNotIn("UNION DISTINCT", query_str)
 
             members = self._realtime_cohort_members(cohort)
-            self.assertIn(str(ab), members)  # A AND B
-            self.assertIn(str(cd), members)  # C AND D
-            self.assertNotIn(str(c_only), members)  # C without D
-            self.assertNotIn(str(a_only), members)  # A without B
+            self.assertIn(str(in_first), members)
+            self.assertIn(str(in_second), members)
+            self.assertNotIn(str(half_first), members)
+            self.assertNotIn(str(half_second), members)
+            self.assertNotIn(str(revoked), members)  # stale A excludes despite an earlier True
         finally:
             sync_execute("DROP TABLE IF EXISTS precalculated_person_properties")
 

@@ -1248,7 +1248,17 @@ class HogQLRealtimeCohortQuery(HogQLCohortQuery):
             return self._build_single_condition_query(deduplicated[0])
 
         threshold = len(deduplicated) if operator == PropertyOperatorType.AND else 1
+        having = parse_expr("countIf(latest_matches = 1) >= {threshold}", {"threshold": ast.Constant(value=threshold)})
+        return self._build_latest_match_scan_query(deduplicated, having)
 
+    def _build_latest_match_scan_query(self, deduplicated_hashes: list[str], having: ast.Expr) -> ast.SelectQuery:
+        """One scan over precalculated_person_properties with a per-person HAVING.
+
+        Reads the table once, computes the latest match state per (person, condition) via argMax,
+        then applies `having` in the outer GROUP BY person_id. Shared by the flat counting path and
+        the nested boolean-tree path — only the HAVING differs — so a change to the scan (filter
+        column, argMax tiebreaker) lands once and the two paths can't silently diverge.
+        """
         query_str = """
             SELECT
                 person_id as id
@@ -1265,7 +1275,7 @@ class HogQLRealtimeCohortQuery(HogQLCohortQuery):
                 GROUP BY person_id, condition
             )
             GROUP BY person_id
-            HAVING countIf(latest_matches = 1) >= {threshold}
+            HAVING {having}
         """
 
         return cast(
@@ -1274,8 +1284,8 @@ class HogQLRealtimeCohortQuery(HogQLCohortQuery):
                 query_str,
                 {
                     "team_id": ast.Constant(value=self.team.pk),
-                    "condition_hashes": ast.Tuple(exprs=[ast.Constant(value=h) for h in deduplicated]),
-                    "threshold": ast.Constant(value=threshold),
+                    "condition_hashes": ast.Tuple(exprs=[ast.Constant(value=h) for h in deduplicated_hashes]),
+                    "having": having,
                 },
             ),
         )
@@ -1383,7 +1393,12 @@ class HogQLRealtimeCohortQuery(HogQLCohortQuery):
             return None
 
         merged = getattr(prop, "_merged_condition_hashes", None)
-        hashes = self._deduplicate_hashes(merged) if merged else [condition_hash]
+        hashes = self._deduplicate_hashes(merged) if merged is not None else [condition_hash]
+        # A merged leaf that collapses to no hashes (empty/all-duplicate) would build a degenerate
+        # predicate (`countIf(... IN ()) = 0`, trivially true for everyone). get_person_condition
+        # raises on this; here we fall through to the parent path instead.
+        if not hashes:
+            return None
         all_hashes.extend(hashes)
         hashes_tuple = ast.Tuple(exprs=[ast.Constant(value=h) for h in hashes])
 
@@ -1435,37 +1450,7 @@ class HogQLRealtimeCohortQuery(HogQLCohortQuery):
         if having is None or not all_hashes:
             return None
 
-        deduplicated = self._deduplicate_hashes(all_hashes)
-        query_str = """
-            SELECT
-                person_id as id
-            FROM
-            (
-                SELECT
-                    person_id,
-                    condition,
-                    argMax(matches, (_timestamp, _offset)) as latest_matches
-                FROM precalculated_person_properties
-                WHERE
-                    team_id = {team_id}
-                    AND condition IN {condition_hashes}
-                GROUP BY person_id, condition
-            )
-            GROUP BY person_id
-            HAVING {having}
-        """
-
-        return cast(
-            ast.SelectQuery,
-            parse_select(
-                query_str,
-                {
-                    "team_id": ast.Constant(value=self.team.pk),
-                    "condition_hashes": ast.Tuple(exprs=[ast.Constant(value=h) for h in deduplicated]),
-                    "having": having,
-                },
-            ),
-        )
+        return self._build_latest_match_scan_query(self._deduplicate_hashes(all_hashes), having)
 
     def _get_conditions(self) -> ast.SelectQuery | ast.SelectSetQuery:
         """Override to emit a single-scan query when all conditions are person properties.

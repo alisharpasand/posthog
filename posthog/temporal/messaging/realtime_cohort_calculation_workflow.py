@@ -307,12 +307,14 @@ def build_final_query(current_members_sql: str) -> str:
         WHERE (previous_members.person_id IS NULL) OR (current_matches.id IS NULL)
         SETTINGS
             join_use_nulls = 1,
-            -- Every GROUP BY here aggregates by person_id, which is in no source table's sort
-            -- key, so it builds a full in-memory hash table. On large cohorts — both the
-            -- single-scan path and the INTERSECT/UNION DISTINCT fall-through — this can exhaust
-            -- the query memory limit and OOM. Spill to disk past a fraction of that limit instead
-            -- of failing; this is an offline job, so slower-but-completes is the right trade-off.
-            -- memory_efficient bounds the distributed merge step too.
+            -- Every GROUP BY here aggregates by person_id, which is not a leading sort-key column
+            -- of the source tables (precalculated_person_properties isn't ordered by it at all;
+            -- cohort_membership has it only as the trailing key of (team_id, cohort_id, person_id)),
+            -- so the aggregation can't stream and builds a full in-memory hash table. On large
+            -- cohorts — both the single-scan path and the INTERSECT/UNION DISTINCT fall-through —
+            -- this can exhaust the query memory limit and OOM. Spill to disk past a fraction of
+            -- that limit instead of failing; this is an offline job, so slower-but-completes is
+            -- the right trade-off. memory_efficient bounds the distributed merge step too.
             max_bytes_ratio_before_external_group_by = {EXTERNAL_GROUP_BY_MEMORY_RATIO},
             distributed_aggregation_memory_efficient = 1
         FORMAT JSONEachRow
