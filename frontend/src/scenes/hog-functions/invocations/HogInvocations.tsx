@@ -24,7 +24,7 @@ import { CUSTOM_OPTION_KEY } from 'lib/components/DateFilter/types'
 import { TZLabel } from 'lib/components/TZLabel'
 import { dayjs } from 'lib/dayjs'
 import { Link } from 'lib/lemon-ui/Link'
-import { DATE_TIME_FORMAT, formatDateRange } from 'lib/utils'
+import { DATE_TIME_FORMAT, formatDateRange } from 'lib/utils/datetime'
 import { PersonDisplay } from 'scenes/persons/PersonDisplay'
 import { urls } from 'scenes/urls'
 

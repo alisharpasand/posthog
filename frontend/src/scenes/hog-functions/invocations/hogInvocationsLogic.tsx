@@ -6,7 +6,7 @@ import { lemonToast } from '@posthog/lemon-ui'
 
 import api, { ApiConfig } from 'lib/api'
 import { dayjs } from 'lib/dayjs'
-import { dateStringToDayJs } from 'lib/utils'
+import { dateStringToDayJs } from 'lib/utils/dateFilters'
 
 import { escapeHogQLString, hogql } from '~/queries/utils'
 
