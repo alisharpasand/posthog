@@ -570,6 +570,11 @@ export namespace Schemas {
       stages: AchievementStage[];
     }
 
+    /**
+     * Map of unlocked stage number (as a string, '1'-'5') to the ISO timestamp it was unlocked.
+     */
+    export type AchievementProgressUnlockedAt = {[key: string]: string};
+
     export interface AchievementProgress {
       /** Track this progress row belongs to. */
       track_key: string;
@@ -582,6 +587,8 @@ export namespace Schemas {
          * @nullable
          */
       last_computed_at: string | null;
+      /** Map of unlocked stage number (as a string, '1'-'5') to the ISO timestamp it was unlocked. */
+      unlocked_at: AchievementProgressUnlockedAt;
     }
 
     export interface PendingCelebration {
@@ -45385,6 +45392,11 @@ export namespace Schemas {
       stale: number;
     }
 
+    export interface RevokeOtherSessionsResponse {
+      /** Number of other login sessions that were revoked. */
+      revoked_count: number;
+    }
+
     export interface RoleLookupResponse {
       /** Matching reference, or null if none exists. */
       reference: RoleExternalReference | null;
@@ -50113,6 +50125,24 @@ export namespace Schemas {
          * @nullable
          */
       error?: UpsertWizardSessionRequestError;
+    }
+
+    /**
+     * A cookie-auth login session shown on the user's 'Web sessions' screen.
+     */
+    export interface UserAuthSession {
+      /** Identifier used to revoke this login session. */
+      readonly id: string;
+      /** When this login session last made a request (refreshed periodically). */
+      readonly last_activity: string;
+      /** Approximate city and country derived from the IP address, if known. */
+      readonly location: string;
+      /** Browser and operating system parsed from the user agent, e.g. 'Chrome 135 on macOS'. */
+      readonly device: string;
+      /** How this session signed in (e.g. password, Google, SAML). */
+      readonly login_method: string;
+      /** Whether this is the login session making the current request. */
+      readonly is_current: boolean;
     }
 
     /**
@@ -63573,6 +63603,11 @@ export namespace Schemas {
      * Optional case-insensitive repository name search query.
      */
     search?: string;
+    };
+
+    export type UsersLoginSessionsListParams = {
+    email?: string;
+    is_staff?: boolean;
     };
 
 
