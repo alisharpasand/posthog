@@ -57,6 +57,7 @@ import type {
     AgentUsersListApi,
     CloneFromRequestApi,
     DecideApprovalRequestApi,
+    ImportBundleRequestApi,
     NewDraftRevisionRequestApi,
     PaginatedAgentApplicationListApi,
     PaginatedAgentRevisionListApi,
@@ -66,6 +67,7 @@ import type {
     PreviewProxyInvokeRequestApi,
     SetEnvKeyRequestApi,
     SetEnvRequestApi,
+    UpdateBundleFileRequestApi,
     WriteAgentMdRequestApi,
     WriteSkillRequestApi,
     WriteSpecRequestApi,
@@ -806,6 +808,75 @@ export const agentApplicationsRevisionsBundleUpdate = async (
         headers: { 'Content-Type': 'application/json', ...options?.headers },
         body: JSON.stringify(writeTypedBundleRequestApi),
     })
+}
+
+export const getAgentApplicationsRevisionsBundleFileUpdateUrl = (
+    projectId: string,
+    applicationId: string,
+    id: string
+) => {
+    return `/api/projects/${projectId}/agent_applications/${applicationId}/revisions/${id}/bundle/file/`
+}
+
+/**
+ * Update one `.md` file on a draft revision's bundle.
+ *
+ * `path` must be `agent.md` or `skills/<id>/SKILL.md` for a skill id
+ * already present in the bundle. Tool source / schema editing is out
+ * of scope here — use the per-tool endpoints. Returns the updated
+ * revision so the caller can refresh its cache in one round-trip.
+ */
+export const agentApplicationsRevisionsBundleFileUpdate = async (
+    projectId: string,
+    applicationId: string,
+    id: string,
+    updateBundleFileRequestApi: UpdateBundleFileRequestApi,
+    options?: RequestInit
+): Promise<AgentRevisionApi> => {
+    return apiMutator<AgentRevisionApi>(
+        getAgentApplicationsRevisionsBundleFileUpdateUrl(projectId, applicationId, id),
+        {
+            ...options,
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json', ...options?.headers },
+            body: JSON.stringify(updateBundleFileRequestApi),
+        }
+    )
+}
+
+export const getAgentApplicationsRevisionsBundleImportCreateUrl = (
+    projectId: string,
+    applicationId: string,
+    id: string
+) => {
+    return `/api/projects/${projectId}/agent_applications/${applicationId}/revisions/${id}/bundle/import/`
+}
+
+/**
+ * Bulk-merge a set of `.md` files into a draft revision.
+ *
+ * Sets `agent_md` if present, and merges `skills[]` by id (overwrites
+ * body — and description when supplied — for existing ids; appends a
+ * new skill for unknown ids). Skills not mentioned are left alone, so
+ * the import is safe to retry. Draft-only; non-draft revisions return
+ * 409 untouched.
+ */
+export const agentApplicationsRevisionsBundleImportCreate = async (
+    projectId: string,
+    applicationId: string,
+    id: string,
+    importBundleRequestApi?: ImportBundleRequestApi,
+    options?: RequestInit
+): Promise<AgentRevisionApi> => {
+    return apiMutator<AgentRevisionApi>(
+        getAgentApplicationsRevisionsBundleImportCreateUrl(projectId, applicationId, id),
+        {
+            ...options,
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', ...options?.headers },
+            body: JSON.stringify(importBundleRequestApi),
+        }
+    )
 }
 
 export const getAgentApplicationsRevisionsCloneFromCreateUrl = (

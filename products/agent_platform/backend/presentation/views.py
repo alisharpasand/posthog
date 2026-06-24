@@ -80,11 +80,13 @@ from .serializers import (
     AgentRevisionSerializer,
     CloneFromRequestSerializer,
     DecideApprovalRequestSerializer,
+    ImportBundleRequestSerializer,
     NewDraftRevisionRequestSerializer,
     PreviewProxyInvokeRequestSerializer,
     PromoteRevisionRequestSerializer,
     SetEnvKeyRequestSerializer,
     SetEnvRequestSerializer,
+    UpdateBundleFileRequestSerializer,
     WriteAgentMdRequestSerializer,
     WriteSkillRequestSerializer,
     WriteSpecRequestSerializer,
@@ -115,6 +117,16 @@ def _resolve_application(queryset: QuerySet, lookup_value: str | None) -> AgentA
 def _janitor() -> JanitorClient:
     """Indirection so tests can monkey-patch."""
     return default_client()
+
+
+# Mirrors `RESOURCE_ID_REGEX` in
+# services/agent-shared/src/storage/typed-bundle.ts. The janitor enforces this
+# regex on every PUT /skills/<id>; pre-checking on the Django side turns a
+# noisy janitor 400 into a clean reject before we make any upstream calls,
+# and is cheap. Keep these two in sync (per agent-shared CLAUDE.md rule 3).
+_RESOURCE_ID_REGEX = re.compile(r"^[a-z0-9](?:[a-z0-9_-]*[a-z0-9])?$")
+# Canonical bundle path for one skill's markdown body.
+_SKILL_BODY_PATH_REGEX = re.compile(r"^skills/([a-z0-9](?:[a-z0-9_-]*[a-z0-9])?)/SKILL\.md$")
 
 
 def _decode_env_map(raw: str | None) -> dict[str, str]:
@@ -1648,6 +1660,8 @@ class AgentRevisionViewSet(TeamAndOrgViewSetMixin, viewsets.ModelViewSet):
         "delete_skill",
         "put_tool",
         "delete_tool",
+        "update_bundle_file",
+        "import_bundle",
         "cron_fire",
         "set_env",
         # env_keys_key handles GET/PUT/DELETE on /env_keys/<KEY>/ — bundled
@@ -2089,6 +2103,165 @@ class AgentRevisionViewSet(TeamAndOrgViewSetMixin, viewsets.ModelViewSet):
     def delete_tool(self, request: Request, tool_id: str, **kwargs) -> Response:
         revision: AgentRevision = self.get_object()
         return Response(self._call(_janitor().delete_tool, str(revision.id), tool_id))
+
+    # ── editable .md surface: per-file PUT + bulk import ────────────────
+    # Wraps the typed bundle proxy for the configuration-pane editor and
+    # the bulk-paste migration dialog. Both are draft-only — once a
+    # revision is frozen (ready/live/archived) the stamped bundle sha is
+    # the source of truth and the working copy must not move underneath
+    # it. 409 matches what the janitor itself returns for non-draft on
+    # the underlying typed bundle routes.
+
+    def _require_draft_or_409(self, revision: AgentRevision) -> Response | None:
+        if revision.state == "draft":
+            return None
+        return Response(
+            {
+                "error": "revision_not_draft",
+                "state": revision.state,
+                "detail": (
+                    f"Cannot edit the bundle on a '{revision.state}' revision. Clone a new draft and edit it instead."
+                ),
+            },
+            status=status.HTTP_409_CONFLICT,
+        )
+
+    def _find_existing_skill(self, revision: AgentRevision, skill_id: str) -> dict[str, Any] | None:
+        """Return the bundle's skill entry with this id, or None."""
+        bundle_payload = self._call(_janitor().get_bundle, str(revision.id))
+        for entry in (bundle_payload.get("bundle") or {}).get("skills") or []:
+            if isinstance(entry, dict) and entry.get("id") == skill_id:
+                return entry
+        return None
+
+    @extend_schema(
+        request=UpdateBundleFileRequestSerializer,
+        responses=AgentRevisionSerializer,
+    )
+    @action(detail=True, methods=["put"], url_path="bundle/file")
+    def update_bundle_file(self, request: Request, **kwargs) -> Response:
+        """Update one `.md` file on a draft revision's bundle.
+
+        `path` must be `agent.md` or `skills/<id>/SKILL.md` for a skill id
+        already present in the bundle. Tool source / schema editing is out
+        of scope here — use the per-tool endpoints. Returns the updated
+        revision so the caller can refresh its cache in one round-trip.
+        """
+        revision: AgentRevision = self.get_object()
+        body = UpdateBundleFileRequestSerializer(data=request.data)
+        body.is_valid(raise_exception=True)
+
+        if (resp := self._require_draft_or_409(revision)) is not None:
+            return resp
+
+        path = body.validated_data["path"]
+        content = body.validated_data["content"]
+
+        if path == "agent.md":
+            self._call(_janitor().put_agent_md, str(revision.id), content)
+        elif (match := _SKILL_BODY_PATH_REGEX.match(path)) is not None:
+            skill_id = match.group(1)
+            # The skill must already exist — adding a brand-new one flows
+            # through the import endpoint, which is where description-on-
+            # first-add is gated. Resolve existence via the actual bundle
+            # (drafts carry an empty spec.skills[]; the array is populated
+            # at freeze), so "does this skill exist" = "is there a SKILL.md
+            # for it on disk".
+            existing_skill = self._find_existing_skill(revision, skill_id)
+            if existing_skill is None:
+                raise ValidationError(
+                    f"Skill '{skill_id}' is not in this revision's bundle. "
+                    "Add new skills via the bundle/import/ endpoint."
+                )
+            # The janitor's PUT skill requires `description` but doesn't
+            # persist it (the bundle reader re-derives it from the body at
+            # read time). Forward the existing description so the contract
+            # stays honest about what's actually changing.
+            self._call(
+                _janitor().put_skill,
+                str(revision.id),
+                skill_id,
+                {"description": existing_skill.get("description") or "Skill", "body": content},
+            )
+        else:
+            raise ValidationError(
+                f"Path '{path}' is not editable through this endpoint. "
+                "Only 'agent.md' and 'skills/<id>/SKILL.md' are supported."
+            )
+
+        revision.refresh_from_db()
+        return Response(AgentRevisionSerializer(revision, context=self.get_serializer_context()).data)
+
+    @extend_schema(
+        request=ImportBundleRequestSerializer,
+        responses=AgentRevisionSerializer,
+    )
+    @action(detail=True, methods=["post"], url_path="bundle/import")
+    def import_bundle(self, request: Request, **kwargs) -> Response:
+        """Bulk-merge a set of `.md` files into a draft revision.
+
+        Sets `agent_md` if present, and merges `skills[]` by id (overwrites
+        body — and description when supplied — for existing ids; appends a
+        new skill for unknown ids). Skills not mentioned are left alone, so
+        the import is safe to retry. Draft-only; non-draft revisions return
+        409 untouched.
+        """
+        revision: AgentRevision = self.get_object()
+        body = ImportBundleRequestSerializer(data=request.data)
+        body.is_valid(raise_exception=True)
+
+        if (resp := self._require_draft_or_409(revision)) is not None:
+            return resp
+
+        agent_md = body.validated_data.get("agent_md")
+        skills = body.validated_data.get("skills") or []
+
+        # Validate every skill id up-front so a single bad id rejects the
+        # whole request before we mutate anything — callers expect "all-or-
+        # nothing" semantics for the bulk paste, otherwise a partial write
+        # leaves the bundle in an in-between state the UI can't easily
+        # explain.
+        for skill in skills:
+            skill_id = skill["id"]
+            if not _RESOURCE_ID_REGEX.match(skill_id):
+                raise ValidationError(
+                    f"Skill id '{skill_id}' is invalid. Use lowercase letters, "
+                    "digits, hyphens, or underscores; must start and end with [a-z0-9]."
+                )
+
+        # Resolve "exists?" via the bundle — drafts have an empty
+        # spec.skills[] until freeze, so that array can't be the source of
+        # truth here.
+        existing_skills_by_id: dict[str, dict[str, Any]] = {}
+        if skills:
+            bundle_payload = self._call(_janitor().get_bundle, str(revision.id))
+            for entry in (bundle_payload.get("bundle") or {}).get("skills") or []:
+                if isinstance(entry, dict) and isinstance(entry.get("id"), str):
+                    existing_skills_by_id[entry["id"]] = entry
+
+        # New skills must carry a description — the typed bundle contract
+        # requires one and there's no existing entry to fall back to.
+        for skill in skills:
+            skill_id = skill["id"]
+            if skill_id not in existing_skills_by_id and not skill.get("description"):
+                raise ValidationError(f"Skill '{skill_id}' is new — `description` is required when adding a skill.")
+
+        if agent_md is not None:
+            self._call(_janitor().put_agent_md, str(revision.id), agent_md)
+
+        for skill in skills:
+            skill_id = skill["id"]
+            existing = existing_skills_by_id.get(skill_id) or {}
+            description = skill.get("description") or existing.get("description") or "Skill"
+            self._call(
+                _janitor().put_skill,
+                str(revision.id),
+                skill_id,
+                {"description": description, "body": skill["body"]},
+            )
+
+        revision.refresh_from_db()
+        return Response(AgentRevisionSerializer(revision, context=self.get_serializer_context()).data)
 
     @extend_schema(
         request=None,
