@@ -1,0 +1,58 @@
+name: RR CLI darwin build
+
+# RistoReipas fork-only workflow. Builds the presigned-PUT–patched posthog-cli
+# for macOS (Apple Silicon + Intel) and attaches the binaries to the
+# cli-rr-presigned-put-v4 release. The upstream release-cli.yml can't run here
+# (it needs PostHog's Sampo/cargo-dist app tokens + Slack secrets), so this is a
+# minimal standalone build. Remove once upstream OBJECT_STORAGE_USE_PRESIGNED_PUT
+# lands (RR-141).
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: 'Release tag to attach the binaries to'
+        required: true
+        default: 'cli-rr-presigned-put-v4'
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: macos-14
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [aarch64-apple-darwin, x86_64-apple-darwin]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Build posthog-cli
+        working-directory: cli
+        run: cargo build --release --locked --target ${{ matrix.target }} --bin posthog-cli
+
+      - name: Package
+        run: |
+          set -euo pipefail
+          BIN="cli/target/${{ matrix.target }}/release/posthog-cli"
+          OUT="posthog-cli-${{ matrix.target }}"
+          cp "$BIN" "$OUT"
+          file "$OUT"
+          "$OUT" --version
+          shasum -a 256 "$OUT" | tee "$OUT.sha256"
+          gzip -9 -k "$OUT"
+
+      - name: Attach to release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release upload "${{ inputs.release_tag }}" \
+            "posthog-cli-${{ matrix.target }}.gz" \
+            "posthog-cli-${{ matrix.target }}.sha256" \
+            --clobber
