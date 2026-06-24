@@ -31,22 +31,17 @@ const INGEST_PATHS = new Set(['/capture', '/batch', '/e', '/track', '/i/v0/e'])
 // Top-level body fields that carry the credential a capture request authenticates with.
 const API_KEY_FIELDS = ['api_key', 'token', 'api_token'] as const
 
-const EMPTY_HOSTS: ReadonlySet<string> = new Set()
-
 export const selfLoopGuardCounter = new Counter({
     name: 'cdp_self_loop_guard_total',
     help: 'Count of fetches the self-loop guard acted on, by mode and action',
     labelNames: ['mode', 'action'],
 })
 
-// `extraIngestHosts` lets a deployment opt additional hostnames into the ingest check
-// (e.g. a self-hosted instance's own domain, or `localhost` in dev). Empty in prod, so
-// only `*.posthog.com` ingestion endpoints are recognised there.
-export const isPostHogIngestUrl = (urlString: string, extraIngestHosts: ReadonlySet<string> = EMPTY_HOSTS): boolean => {
+export const isPostHogIngestUrl = (urlString: string): boolean => {
     try {
         const url = new URL(urlString)
         const host = url.hostname.toLowerCase()
-        const isIngestHost = host === 'posthog.com' || host.endsWith('.posthog.com') || extraIngestHosts.has(host)
+        const isIngestHost = host === 'posthog.com' || host.endsWith('.posthog.com')
         if (!isIngestHost) {
             return false
         }
@@ -97,9 +92,8 @@ export const isSelfReferentialIngestFetch = (input: {
     url: string
     body: string | null | undefined
     team: Pick<Team, 'api_token' | 'secret_api_token'>
-    extraIngestHosts?: ReadonlySet<string>
 }): boolean => {
-    if (!isPostHogIngestUrl(input.url, input.extraIngestHosts)) {
+    if (!isPostHogIngestUrl(input.url)) {
         return false
     }
     const requestToken = extractRequestApiKey(input.body, input.url)
@@ -141,14 +135,4 @@ export const injectExecutionCount = (body: string | null | undefined, count: num
         stamp(obj)
     }
     return JSON.stringify(parsed)
-}
-
-// Parse the comma-separated `CDP_SELF_LOOP_GUARD_EXTRA_INGEST_HOSTS` config into a set of
-// lowercase hostnames.
-export const parseExtraIngestHosts = (configValue: string): ReadonlySet<string> => {
-    const hosts = configValue
-        .split(',')
-        .map((h) => h.trim().toLowerCase())
-        .filter((h) => h.length > 0)
-    return new Set(hosts)
 }

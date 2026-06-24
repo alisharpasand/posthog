@@ -43,7 +43,6 @@ import {
     injectExecutionCount,
     isPostHogIngestUrl,
     isSelfReferentialIngestFetch,
-    parseExtraIngestHosts,
     selfLoopGuardCounter,
 } from './self-loop-guard'
 
@@ -60,7 +59,6 @@ export interface HogExecutorConfig {
     fetchBackoffBaseMs: number
     fetchBackoffMaxMs: number
     selfLoopGuardMode: SelfLoopGuardMode
-    selfLoopGuardExtraIngestHosts: string
     emailQueueRouting: string
 }
 
@@ -206,7 +204,6 @@ export type HogExecutorExecuteAsyncOptions = HogExecutorExecuteOptions & {
 
 export class HogExecutorService {
     private emailQueueMatcher: ValueMatcher<number>
-    private selfLoopExtraIngestHosts: ReadonlySet<string>
 
     constructor(
         private config: HogExecutorConfig,
@@ -216,7 +213,6 @@ export class HogExecutorService {
         private recipientTokensService: RecipientTokensService
     ) {
         this.emailQueueMatcher = buildIntegerMatcherWithPercentage(config.emailQueueRouting)
-        this.selfLoopExtraIngestHosts = parseExtraIngestHosts(config.selfLoopGuardExtraIngestHosts)
     }
 
     async buildInputsWithGlobals(
@@ -783,18 +779,10 @@ export class HogExecutorService {
         // nothing, and the whole block fails open - the guard must never break a destination
         // it was only meant to protect.
         const guardMode = this.config.selfLoopGuardMode
-        if (guardMode !== 'disabled' && isPostHogIngestUrl(params.url, this.selfLoopExtraIngestHosts)) {
+        if (guardMode !== 'disabled' && isPostHogIngestUrl(params.url)) {
             try {
                 const team = await this.asyncContext.teamManager.getTeam(invocation.teamId)
-                if (
-                    team &&
-                    isSelfReferentialIngestFetch({
-                        url: params.url,
-                        body: params.body,
-                        team,
-                        extraIngestHosts: this.selfLoopExtraIngestHosts,
-                    })
-                ) {
+                if (team && isSelfReferentialIngestFetch({ url: params.url, body: params.body, team })) {
                     // Hops already taken by this chain. Shares the counter `postHogCapture`
                     // increments, so a chain mixing both paths is bounded once.
                     const givenCount = invocation.state.globals.event?.properties?.[EXECUTION_COUNT_PROPERTY]

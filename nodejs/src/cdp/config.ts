@@ -107,10 +107,6 @@ export type CdpConfig = ClickhouseConfig & {
     CDP_FETCH_BACKOFF_BASE_MS: number
     CDP_FETCH_BACKOFF_MAX_MS: number
     CDP_SELF_LOOP_GUARD_MODE: SelfLoopGuardMode
-    // Comma-separated extra hostnames the self-loop guard treats as ingestion endpoints,
-    // on top of `*.posthog.com`. Empty in prod; set e.g. to `localhost` for local testing
-    // or a self-hosted instance's own domain.
-    CDP_SELF_LOOP_GUARD_EXTRA_INGEST_HOSTS: string
     CDP_OVERFLOW_QUEUE_ENABLED: boolean
     HOG_FUNCTION_MONITORING_APP_METRICS_TOPIC: string
     HOG_FUNCTION_MONITORING_APP_METRICS_PRODUCER: CdpProducerName
@@ -235,7 +231,6 @@ export function getDefaultCdpConfig(): CdpConfig {
         // and emits cdp_self_loop_guard_total without blocking; 'enforce' bounds true loops
         // at SELF_LOOP_MAX_DEPTH hops. Roll out warn -> enforce per environment.
         CDP_SELF_LOOP_GUARD_MODE: 'warn',
-        CDP_SELF_LOOP_GUARD_EXTRA_INGEST_HOSTS: '',
         CDP_OVERFLOW_QUEUE_ENABLED: false,
         HOG_FUNCTION_MONITORING_APP_METRICS_TOPIC: KAFKA_APP_METRICS_2,
         HOG_FUNCTION_MONITORING_APP_METRICS_PRODUCER: WARPSTREAM_INGESTION_PRODUCER,

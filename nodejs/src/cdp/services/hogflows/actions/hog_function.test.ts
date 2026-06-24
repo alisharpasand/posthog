@@ -66,7 +66,6 @@ describe('HogFunctionHandler', () => {
                 fetchBackoffMaxMs: hub.CDP_FETCH_BACKOFF_MAX_MS,
                 emailQueueRouting: hub.CDP_EMAIL_QUEUE_ROUTING,
                 selfLoopGuardMode: hub.CDP_SELF_LOOP_GUARD_MODE,
-                selfLoopGuardExtraIngestHosts: hub.CDP_SELF_LOOP_GUARD_EXTRA_INGEST_HOSTS,
             },
             { teamManager: hub.teamManager, siteUrl: hub.SITE_URL },
             hogInputsService,

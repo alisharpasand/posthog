@@ -6,7 +6,6 @@ import {
     injectExecutionCount,
     isPostHogIngestUrl,
     isSelfReferentialIngestFetch,
-    parseExtraIngestHosts,
 } from './self-loop-guard'
 
 // Synthetic, non-production values. OWN_TOKEN is the project the destination runs in;
@@ -158,34 +157,6 @@ describe('self-loop-guard', () => {
             },
         ])('returns $expected for: $case', ({ args, expected }) => {
             expect(detect(args)).toBe(expected)
-        })
-
-        it.each([
-            { case: 'not recognised without the extra host', extraIngestHosts: undefined, expected: false },
-            { case: 'recognised once the host is opted in', extraIngestHosts: new Set(['localhost']), expected: true },
-        ])('extra ingest host (self-hosted / local): $case', ({ extraIngestHosts, expected }) => {
-            expect(
-                isSelfReferentialIngestFetch({
-                    url: 'http://localhost:8000/i/v0/e/',
-                    body: captureBody('e'),
-                    team: TEAM,
-                    extraIngestHosts,
-                })
-            ).toBe(expected)
-        })
-    })
-
-    describe('parseExtraIngestHosts', () => {
-        it.each([
-            {
-                case: 'trims, lowercases, and drops blanks',
-                input: ' localhost , Example.COM ,, ',
-                expected: ['localhost', 'example.com'],
-            },
-            { case: 'empty config', input: '', expected: [] },
-            { case: 'single host', input: 'eu.i.posthog.com', expected: ['eu.i.posthog.com'] },
-        ])('$case', ({ input, expected }) => {
-            expect([...parseExtraIngestHosts(input)]).toEqual(expected)
         })
     })
 
