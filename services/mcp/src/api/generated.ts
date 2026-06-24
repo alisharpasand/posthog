@@ -15786,6 +15786,7 @@ export namespace Schemas {
      * * `Leexi` - Leexi
      * * `RB2B` - RB2B
      * * `Superwall` - Superwall
+     * * `LemonSqueezy` - LemonSqueezy
      */
     export type ExternalDataSourceTypeEnum = typeof ExternalDataSourceTypeEnum[keyof typeof ExternalDataSourceTypeEnum];
 
@@ -16431,6 +16432,7 @@ export namespace Schemas {
       Leexi: 'Leexi',
       Rb2b: 'RB2B',
       Superwall: 'Superwall',
+      LemonSqueezy: 'LemonSqueezy',
     } as const;
 
     /**
@@ -17082,7 +17084,8 @@ export namespace Schemas {
        * * `Knock` - Knock
        * * `Leexi` - Leexi
        * * `RB2B` - RB2B
-       * * `Superwall` - Superwall */
+       * * `Superwall` - Superwall
+       * * `LemonSqueezy` - LemonSqueezy */
       source_type: ExternalDataSourceTypeEnum;
     }
 
@@ -22224,7 +22227,8 @@ export namespace Schemas {
        * * `Knock` - Knock
        * * `Leexi` - Leexi
        * * `RB2B` - RB2B
-       * * `Superwall` - Superwall */
+       * * `Superwall` - Superwall
+       * * `LemonSqueezy` - LemonSqueezy */
       source_type: ExternalDataSourceTypeEnum;
       /** Connection credentials and a 'schemas' array. Keys depend on source_type. */
       payload: ExternalDataSourceCreatePayload;
@@ -47561,7 +47565,8 @@ export namespace Schemas {
        * * `Knock` - Knock
        * * `Leexi` - Leexi
        * * `RB2B` - RB2B
-       * * `Superwall` - Superwall */
+       * * `Superwall` - Superwall
+       * * `LemonSqueezy` - LemonSqueezy */
       source_type: ExternalDataSourceTypeEnum;
       /** Connection details as flat keys for the source_type — the same fields the create flow accepts (host, port, password, API key, …). Checked against a live connection before being stored. */
       payload: SourceCredentialCreatePayload;
@@ -48239,7 +48244,8 @@ export namespace Schemas {
        * * `Knock` - Knock
        * * `Leexi` - Leexi
        * * `RB2B` - RB2B
-       * * `Superwall` - Superwall */
+       * * `Superwall` - Superwall
+       * * `LemonSqueezy` - LemonSqueezy */
       source_type: ExternalDataSourceTypeEnum;
       /** Connection details as flat keys for the source_type (discover required fields with the wizard tool). Prefer references over raw secrets: pass {'credential_id': <id>} referencing the connection details the user stored via the connect-link page (discover ids with the stored_credentials endpoint) — they are merged in server-side and deleted once consumed. An already-connected OAuth integration can be passed via its id key instead (e.g. {'hubspot_integration_id': 123}). A 'schemas' array is NOT required — all discovered tables are enabled automatically with sensible sync defaults. */
       payload?: SourceSetupPayload;
