@@ -6935,6 +6935,7 @@ export const externalDataSources = [
     'Leexi',
     'RB2B',
     'Superwall',
+    'Hightouch',
 ] as const
 
 export type ExternalDataSourceType = (typeof externalDataSources)[number]

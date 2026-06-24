@@ -1812,6 +1812,7 @@ class ExternalDataSourceType(StrEnum):
     LEEXI = "Leexi"
     RB2_B = "RB2B"
     SUPERWALL = "Superwall"
+    HIGHTOUCH = "Hightouch"
 
 
 class ExternalQueryErrorCode(StrEnum):
