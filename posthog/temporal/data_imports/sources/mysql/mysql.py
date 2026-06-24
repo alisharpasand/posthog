@@ -347,7 +347,7 @@ def _connect_with_transient_retry(kwargs: dict[str, Any]) -> pymysql.Connection:
             ):
                 raise
             structlog.get_logger().warning(
-                "Transient MySQL connection drop during connect; retrying",
+                "Transient MySQL connection error during connect; retrying",
                 attempt=attempt,
                 max_attempts=_MAX_CONNECT_ATTEMPTS,
                 exc_info=e,
