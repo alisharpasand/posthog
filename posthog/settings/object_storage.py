@@ -31,6 +31,13 @@ OBJECT_STORAGE_MEDIA_UPLOADS_FOLDER = os.getenv("OBJECT_STORAGE_MEDIA_UPLOADS_FO
 OBJECT_STORAGE_ERROR_TRACKING_SOURCE_MAPS_FOLDER = os.getenv(
     "OBJECT_STORAGE_ERROR_TRACKING_SOURCE_MAPS_FOLDER", "symbolsets"
 )
+# Error-tracking symbol-set uploads use an S3 "POST Object" (browser-style form
+# POST) presigned request by default. Some S3-compatible object stores (e.g.
+# UpCloud) don't support POST Object and reject it with HTTP 405. Set this true
+# to issue a presigned PUT instead — works on any store that supports PUT.
+OBJECT_STORAGE_USE_PRESIGNED_PUT = get_from_env(
+    "OBJECT_STORAGE_USE_PRESIGNED_PUT", False, type_cast=str_to_bool
+)
 OBJECT_STORAGE_S3_QUERY_CACHE_FOLDER = os.getenv("OBJECT_STORAGE_S3_QUERY_CACHE_FOLDER", "query_cache")
 OBJECT_STORAGE_TASKS_FOLDER = os.getenv("OBJECT_STORAGE_TASKS_FOLDER", "tasks")
 OBJECT_STORAGE_LEGAL_DOCUMENTS_FOLDER = os.getenv("OBJECT_STORAGE_LEGAL_DOCUMENTS_FOLDER", "legal_documents")

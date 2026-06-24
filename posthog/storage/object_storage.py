@@ -195,6 +195,25 @@ class ObjectStorage(ObjectStorageClient):
             capture_exception(e)
             return None
 
+    def get_presigned_put(self, bucket: str, file_key: str, expiration: int = 3600) -> Optional[dict]:
+        # Returns the same {"url", "fields"} shape as get_presigned_post, but for
+        # a raw PUT: the URL carries the object key and `fields` is empty. Empty
+        # fields signal to the uploader to PUT the body directly instead of
+        # building a multipart POST form. For S3-compatible stores that don't
+        # support "POST Object" (e.g. UpCloud, which returns HTTP 405 on POST).
+        try:
+            url = self.presigned_client.generate_presigned_url(
+                ClientMethod="put_object",
+                Params={"Bucket": bucket, "Key": file_key},
+                ExpiresIn=expiration,
+                HttpMethod="PUT",
+            )
+            return {"url": url, "fields": {}}
+        except Exception as e:
+            logger.exception("object_storage.get_presigned_put_failed", file_name=file_key, error=e)
+            capture_exception(e)
+            return None
+
     def get_presigned_post(
         self, bucket: str, file_key: str, conditions: list[Any], expiration: int = 3600
     ) -> Optional[dict]:
@@ -555,6 +574,12 @@ def get_presigned_url(
 def get_presigned_post(file_key: str, conditions: list[Any], expiration: int = 3600) -> Optional[dict]:
     return object_storage_client().get_presigned_post(
         bucket=settings.OBJECT_STORAGE_BUCKET, file_key=file_key, conditions=conditions, expiration=expiration
+    )
+
+
+def get_presigned_put(file_key: str, expiration: int = 3600) -> Optional[dict]:
+    return object_storage_client().get_presigned_put(
+        bucket=settings.OBJECT_STORAGE_BUCKET, file_key=file_key, expiration=expiration
     )
 
 
