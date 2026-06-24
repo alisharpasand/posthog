@@ -21,7 +21,7 @@ export function initSuperProperties(): void {
         const superProperties: Record<string, any> = {
             plugin_server_mode: defaultConfig.PLUGIN_SERVER_MODE,
             deployment: defaultConfig.CLOUD_DEPLOYMENT,
-            plugin_server_events_ingestion_pipeline: defaultConfig.PLUGIN_SERVER_EVENTS_INGESTION_PIPELINE,
+            plugin_server_events_ingestion_pipeline: process.env.PLUGIN_SERVER_EVENTS_INGESTION_PIPELINE ?? null,
             // Super properties matching Python posthoganalytics.super_properties (posthog/apps.py)
             region: defaultConfig.CLOUD_DEPLOYMENT,
             service: defaultConfig.OTEL_SERVICE_NAME,
