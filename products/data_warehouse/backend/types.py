@@ -682,6 +682,7 @@ class ExternalDataSourceType(models.TextChoices):
     LEEXI = "Leexi", "Leexi"
     RB2B = "RB2B", "RB2B"
     SUPERWALL = "Superwall", "Superwall"
+    LEMONSQUEEZY = "LemonSqueezy", "LemonSqueezy"
 
 
 # Maps a source type to the direct-SQL engine that can query it live. A source type is only

@@ -456,6 +456,7 @@ doesn't conflict with concurrent PRs.
 - leadfeeder
 - leexi
 - lemlist
+- lemon_squeezy
 - less_annoying_crm
 - lever
 - lightfield

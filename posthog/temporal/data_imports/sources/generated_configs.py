@@ -1700,6 +1700,11 @@ class LemlistSourceConfig(config.Config):
 
 
 @config.config
+class LemonSqueezySourceConfig(config.Config):
+    pass
+
+
+@config.config
 class LessAnnoyingCRMSourceConfig(config.Config):
     pass
 
@@ -3809,6 +3814,7 @@ def get_config_for_source(source: ExternalDataSourceType):
         ExternalDataSourceType.LEADFEEDER: LeadfeederSourceConfig,
         ExternalDataSourceType.LEEXI: LeexiSourceConfig,
         ExternalDataSourceType.LEMLIST: LemlistSourceConfig,
+        ExternalDataSourceType.LEMONSQUEEZY: LemonSqueezySourceConfig,
         ExternalDataSourceType.LESSANNOYINGCRM: LessAnnoyingCRMSourceConfig,
         ExternalDataSourceType.LEVER: LeverSourceConfig,
         ExternalDataSourceType.LIGHTFIELD: LightfieldSourceConfig,
