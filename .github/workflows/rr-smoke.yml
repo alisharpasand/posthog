@@ -1,7 +1,0 @@
-name: RR smoke
-on: { workflow_dispatch: {} }
-permissions: { contents: read }
-jobs:
-  ubuntu:
-    runs-on: ubuntu-latest
-    steps: [ { run: 'echo ok && uname -a' } ]
