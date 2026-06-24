@@ -2,6 +2,7 @@ from posthog.test.base import BaseTest
 
 from posthog.management.commands.delete_persons import delete_persons_batch
 from posthog.models import Person, Team
+from posthog.test.persons import create_person
 
 
 class TestDeletePersonsBatch(BaseTest):
@@ -11,12 +12,12 @@ class TestDeletePersonsBatch(BaseTest):
 
     def setUp(self):
         super().setUp()
-        self.person1 = Person.objects.create(team=self.team, properties={"name": "person1"})
-        self.person2 = Person.objects.create(team=self.team, properties={"name": "person2"})
-        self.person3 = Person.objects.create(team=self.team, properties={"name": "person3"})
+        self.person1 = create_person(team=self.team, properties={"name": "person1"})
+        self.person2 = create_person(team=self.team, properties={"name": "person2"})
+        self.person3 = create_person(team=self.team, properties={"name": "person3"})
 
         self.other_team = Team.objects.create(organization=self.organization, name="Other Team")
-        self.other_person = Person.objects.create(team=self.other_team, properties={"name": "other"})
+        self.other_person = create_person(team=self.other_team, properties={"name": "other"})
 
     def get_remaining_person_ids(self) -> set[int]:
         return set(Person.objects.filter(team=self.team).values_list("id", flat=True))

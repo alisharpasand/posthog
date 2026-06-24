@@ -29,15 +29,18 @@ from posthog import redis
 from posthog.api.cohort import BATCH_FLAG_EVALUATION_PAGE_ATTEMPTS, get_cohort_actors_for_feature_flag
 from posthog.api.services.flags_service import FlagVersionConflictError
 from posthog.constants import AvailableFeature
-from posthog.models import GroupTypeMapping, TaggedItem, User
-from posthog.models.group.group import Group
+from posthog.models import TaggedItem, User
 from posthog.models.group.util import create_group
 from posthog.models.organization import Organization, OrganizationMembership
-from posthog.models.person import Person
 from posthog.models.personal_api_key import PersonalAPIKey
 from posthog.models.team.team import Team
 from posthog.models.utils import generate_random_token_personal, hash_key_value
 from posthog.test.db_context_capturing import capture_db_queries
+from posthog.test.persons import (
+    create_group as create_test_group,
+    create_group_type_mapping,
+    create_person,
+)
 from posthog.test.test_utils import create_group_type_mapping_without_created_at
 
 from products.cohorts.backend.models.calculation_history import CohortCalculationHistory
@@ -5229,7 +5232,7 @@ class TestFeatureFlag(APIBaseTest, ClickhouseTestMixin):
         )
 
     def test_mixed_aggregation_types_across_condition_sets(self):
-        GroupTypeMapping.objects.create(
+        create_group_type_mapping(
             team=self.team, project_id=self.team.project_id, group_type="organization", group_type_index=0
         )
 
@@ -5265,7 +5268,7 @@ class TestFeatureFlag(APIBaseTest, ClickhouseTestMixin):
         self.assertEqual(groups[1]["aggregation_group_type_index"], 0)
 
     def test_mixed_aggregation_round_trip(self):
-        GroupTypeMapping.objects.create(
+        create_group_type_mapping(
             team=self.team, project_id=self.team.project_id, group_type="organization", group_type_index=0
         )
 
@@ -5293,7 +5296,7 @@ class TestFeatureFlag(APIBaseTest, ClickhouseTestMixin):
         self.assertEqual(filters["groups"][1]["aggregation_group_type_index"], 0)
 
     def test_mixed_aggregation_with_properties(self):
-        GroupTypeMapping.objects.create(
+        create_group_type_mapping(
             team=self.team, project_id=self.team.project_id, group_type="organization", group_type_index=0
         )
 
@@ -5336,7 +5339,7 @@ class TestFeatureFlag(APIBaseTest, ClickhouseTestMixin):
         self.assertEqual(groups[1]["aggregation_group_type_index"], 0)
 
     def test_patch_uniform_flag_to_mixed(self):
-        GroupTypeMapping.objects.create(
+        create_group_type_mapping(
             team=self.team, project_id=self.team.project_id, group_type="organization", group_type_index=0
         )
 
@@ -5376,7 +5379,7 @@ class TestFeatureFlag(APIBaseTest, ClickhouseTestMixin):
 
     def test_per_condition_aggregation_normalization(self):
         """Test that flag-level aggregation is distributed to condition sets without one"""
-        GroupTypeMapping.objects.create(
+        create_group_type_mapping(
             team=self.team, project_id=self.team.project_id, group_type="organization", group_type_index=0
         )
 
@@ -5403,7 +5406,7 @@ class TestFeatureFlag(APIBaseTest, ClickhouseTestMixin):
 
     def test_per_condition_aggregation_roundtrip(self):
         """Test that per-condition aggregation values persist through create/read"""
-        GroupTypeMapping.objects.create(
+        create_group_type_mapping(
             team=self.team, project_id=self.team.project_id, group_type="organization", group_type_index=0
         )
 
@@ -6707,17 +6710,17 @@ class TestFeatureFlag(APIBaseTest, ClickhouseTestMixin):
         )
 
     def test_feature_flag_includes_group_key_names(self):
-        GroupTypeMapping.objects.create(
+        create_group_type_mapping(
             team=self.team, project_id=self.team.project_id, group_type="organization", group_type_index=0
         )
-        Group.objects.create(
+        create_test_group(
             team=self.team,
             group_key="org-uuid-1",
             group_type_index=0,
             group_properties={"name": "Acme Corp"},
             version=0,
         )
-        Group.objects.create(
+        create_test_group(
             team=self.team,
             group_key="org-uuid-2",
             group_type_index=0,
@@ -8769,7 +8772,7 @@ class TestBlastRadius(ClickhouseTestMixin, APIBaseTest):
     @snapshot_clickhouse_queries
     def test_user_blast_radius_with_group_key_property(self):
         """Test that $group_key property correctly identifies groups by their key"""
-        GroupTypeMapping.objects.create(
+        create_group_type_mapping(
             team=self.team,
             project_id=self.team.project_id,
             group_type="organization",
@@ -8895,7 +8898,7 @@ class TestBlastRadius(ClickhouseTestMixin, APIBaseTest):
     def test_user_blast_radius_with_group_key_operators(
         self, _name, value, operator, expected_affected, expected_total
     ):
-        GroupTypeMapping.objects.create(
+        create_group_type_mapping(
             team=self.team,
             project_id=self.team.project_id,
             group_type="organization",
@@ -8947,7 +8950,7 @@ class TestBlastRadius(ClickhouseTestMixin, APIBaseTest):
 
     def test_user_blast_radius_with_group_key_and_regular_properties(self):
         """Test combining $group_key with regular group properties"""
-        GroupTypeMapping.objects.create(
+        create_group_type_mapping(
             team=self.team,
             project_id=self.team.project_id,
             group_type="organization",
@@ -9113,7 +9116,7 @@ class TestBlastRadius(ClickhouseTestMixin, APIBaseTest):
 
     def test_user_blast_radius_with_group_key_unsupported_operator(self):
         """Test that unsupported operators on $group_key raise validation errors"""
-        GroupTypeMapping.objects.create(
+        create_group_type_mapping(
             team=self.team,
             project_id=self.team.project_id,
             group_type="organization",
@@ -9152,7 +9155,7 @@ class TestBlastRadius(ClickhouseTestMixin, APIBaseTest):
 
     def test_user_blast_radius_with_group_key_exact_list_values(self):
         """Test that EXACT operator with list values uses IN logic"""
-        GroupTypeMapping.objects.create(
+        create_group_type_mapping(
             team=self.team,
             project_id=self.team.project_id,
             group_type="organization",
@@ -9206,7 +9209,7 @@ class TestBlastRadius(ClickhouseTestMixin, APIBaseTest):
 
     def test_user_blast_radius_with_group_key_is_not_list_values(self):
         """Test that IS_NOT operator with list values uses NOT IN logic"""
-        GroupTypeMapping.objects.create(
+        create_group_type_mapping(
             team=self.team,
             project_id=self.team.project_id,
             group_type="organization",
@@ -9263,7 +9266,7 @@ class TestBlastRadius(ClickhouseTestMixin, APIBaseTest):
 
     def test_user_blast_radius_with_group_key_icontains_list_values_raises_error(self):
         """Test that ICONTAINS operator with list values raises validation error"""
-        GroupTypeMapping.objects.create(
+        create_group_type_mapping(
             team=self.team,
             project_id=self.team.project_id,
             group_type="organization",
@@ -9586,7 +9589,7 @@ class TestBlastRadius(ClickhouseTestMixin, APIBaseTest):
 
     def test_user_blast_radius_with_semver_operators_on_groups(self):
         """Test semver operators work with group properties"""
-        GroupTypeMapping.objects.create(
+        create_group_type_mapping(
             team=self.team,
             project_id=self.team.project_id,
             group_type="organization",
@@ -12187,9 +12190,7 @@ class TestFeatureFlagTestEvaluation(APIBaseTest, ClickhouseTestMixin):
             key="test-flag",
             filters={"groups": [{"properties": [{"key": "email", "type": "person", "value": "test@example.com"}]}]},
         )
-        person = Person.objects.create(
-            team=self.team, distinct_ids=["test-user"], properties={"email": "test@example.com"}
-        )
+        person = create_person(team=self.team, distinct_ids=["test-user"], properties={"email": "test@example.com"})
 
         # Mock person lookup
         mock_get_person.return_value = (person, ["test-user"])
@@ -12245,7 +12246,7 @@ class TestFeatureFlagTestEvaluation(APIBaseTest, ClickhouseTestMixin):
         distinct_id back, otherwise feature_flag:read tokens could enumerate
         distinct_ids for any person UUID."""
         flag = FeatureFlag.objects.create(team=self.team, key="test-flag")
-        person = Person.objects.create(team=self.team, distinct_ids=["zzz", "aaa", "mmm"])
+        person = create_person(team=self.team, distinct_ids=["zzz", "aaa", "mmm"])
 
         # Hand the resolver back distinct_ids in deliberately non-sorted order
         # to prove the sort happens in feature_flag.py, not upstream.
@@ -12289,7 +12290,7 @@ class TestFeatureFlagTestEvaluation(APIBaseTest, ClickhouseTestMixin):
             ensure_experience_continuity=True,
         )
 
-        Person.objects.create(team=self.team, distinct_ids=["test-user"])
+        create_person(team=self.team, distinct_ids=["test-user"])
 
         mock_get_flags.return_value = {
             "flags": {
@@ -12382,7 +12383,7 @@ class TestFeatureFlagTestEvaluation(APIBaseTest, ClickhouseTestMixin):
     def test_test_evaluation_missing_internal_token_error(self, mock_get_flags):
         """Test 500 when INTERNAL_REQUEST_TOKEN is not set."""
         flag = FeatureFlag.objects.create(team=self.team, key="test-flag")
-        Person.objects.create(team=self.team, distinct_ids=["test-user"])
+        create_person(team=self.team, distinct_ids=["test-user"])
 
         response = self.client.post(
             f"/api/projects/{self.team.pk}/feature_flags/{flag.id}/test_evaluation/",
@@ -12398,7 +12399,7 @@ class TestFeatureFlagTestEvaluation(APIBaseTest, ClickhouseTestMixin):
     def test_test_evaluation_historical_missing_conditions_502(self, mock_get_flags):
         """Test 502 when historical evaluation returns no conditions (misconfigured token)."""
         flag = FeatureFlag.objects.create(team=self.team, key="test-flag")
-        Person.objects.create(team=self.team, distinct_ids=["test-user"])
+        create_person(team=self.team, distinct_ids=["test-user"])
 
         # Mock service to return flag dict without 'conditions' key - indicates token issue
         mock_get_flags.return_value = {
@@ -12433,7 +12434,7 @@ class TestFeatureFlagTestEvaluation(APIBaseTest, ClickhouseTestMixin):
     def test_test_evaluation_current_missing_conditions_200(self, mock_get_flags):
         """Test 200 when current evaluation returns no conditions (no 502 for current evaluation)."""
         flag = FeatureFlag.objects.create(team=self.team, key="test-flag")
-        Person.objects.create(team=self.team, distinct_ids=["test-user"])
+        create_person(team=self.team, distinct_ids=["test-user"])
 
         # Mock service to return flag dict without 'conditions' key
         mock_get_flags.return_value = {
@@ -12464,7 +12465,7 @@ class TestFeatureFlagTestEvaluation(APIBaseTest, ClickhouseTestMixin):
     def test_test_evaluation_build_properties_failure(self, mock_build_props):
         """Test 500 when build_person_properties_at_time raises exception."""
         flag = FeatureFlag.objects.create(team=self.team, key="test-flag")
-        Person.objects.create(team=self.team, distinct_ids=["test-user"])
+        create_person(team=self.team, distinct_ids=["test-user"])
 
         # Mock exception during property building
         mock_build_props.side_effect = Exception("Database error")
@@ -12487,7 +12488,7 @@ class TestFeatureFlagTestEvaluation(APIBaseTest, ClickhouseTestMixin):
             key="test-flag",
             filters={"groups": [{"properties": [{"key": "email", "type": "person", "value": "test@example.com"}]}]},
         )
-        Person.objects.create(
+        create_person(
             team=self.team,
             distinct_ids=["test-user"],
             properties={"email": "test@example.com", "name": "Test User", "age": 30},
@@ -12535,7 +12536,7 @@ class TestFeatureFlagTestEvaluation(APIBaseTest, ClickhouseTestMixin):
             filters={"feature_enrollment": True, "groups": [{"properties": []}]},
         )
         enrollment_key = f"$feature_enrollment/{flag.key}"
-        Person.objects.create(
+        create_person(
             team=self.team,
             distinct_ids=["test-user"],
             properties={enrollment_key: True, "email": "x@y.com"},
@@ -12569,7 +12570,7 @@ class TestFeatureFlagTestEvaluation(APIBaseTest, ClickhouseTestMixin):
     def test_test_evaluation_unexpected_response_type(self, mock_get_flags):
         """Test 502 when flag service returns unexpected response format."""
         flag = FeatureFlag.objects.create(team=self.team, key="test-flag")
-        Person.objects.create(team=self.team, distinct_ids=["test-user"])
+        create_person(team=self.team, distinct_ids=["test-user"])
 
         # Mock unexpected response format (not a dict)
         mock_get_flags.return_value = {"flags": {"test-flag": "unexpected_string"}}
@@ -12642,7 +12643,7 @@ class TestFeatureFlagTestEvaluation(APIBaseTest, ClickhouseTestMixin):
             ensure_experience_continuity=True,
         )
 
-        Person.objects.create(team=self.team, distinct_ids=["test-user"])
+        create_person(team=self.team, distinct_ids=["test-user"])
 
         with patch(
             "products.feature_flags.backend.api.feature_flag.build_person_properties_at_time"
@@ -12684,7 +12685,7 @@ class TestFeatureFlagTestEvaluation(APIBaseTest, ClickhouseTestMixin):
             created_by=self.user,
             filters={"groups": [{"properties": [], "rollout_percentage": 100}]},
         )
-        Person.objects.create(team=self.team, distinct_ids=["test-user"])
+        create_person(team=self.team, distinct_ids=["test-user"])
         mock_get_flags.return_value = {
             "flags": {
                 "test-flag": {
