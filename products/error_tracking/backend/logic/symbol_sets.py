@@ -72,6 +72,14 @@ def generate_symbol_set_file_key() -> str:
 
 
 def generate_symbol_set_upload_presigned_url(file_key: str, *, accelerate: bool = False):
+    # Stores without S3 "POST Object" support (e.g. UpCloud) reject the default
+    # presigned-POST upload with HTTP 405. Issue a presigned PUT instead — the
+    # uploader detects the empty `fields` and PUTs the body directly.
+    if getattr(settings, "OBJECT_STORAGE_USE_PRESIGNED_PUT", False):
+        return object_storage.get_presigned_put(
+            file_key=file_key,
+            expiration=PRESIGNED_MULTIPLE_UPLOAD_TIMEOUT,
+        )
     if accelerate:
         return object_storage.get_accelerated_presigned_post(
             file_key=file_key,

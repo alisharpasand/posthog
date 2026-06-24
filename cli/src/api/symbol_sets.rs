@@ -194,14 +194,22 @@ fn start_upload(
 fn upload_to_s3(presigned_url: PresignedUrl, data: &[u8]) -> Result<()> {
     let client = &context().build_http_client()?;
     retry(retry_policy(500, 2, 3), |_| -> Result<()> {
-        let mut form = Form::new();
-        for (key, value) in &presigned_url.fields {
-            form = form.text(key.clone(), value.clone());
-        }
-        let part = Part::bytes(data.to_vec());
-        form = form.part("file", part);
-
-        let response = client.post(&presigned_url.url).multipart(form).send()?;
+        // An empty `fields` map signals a presigned PUT (the object key is in
+        // the URL): PUT the body directly. This is what the server issues for
+        // S3-compatible stores that don't support "POST Object" (e.g. UpCloud,
+        // which returns HTTP 405 on the form POST). Otherwise fall back to the
+        // standard presigned-POST multipart form upload.
+        let response = if presigned_url.fields.is_empty() {
+            client.put(&presigned_url.url).body(data.to_vec()).send()?
+        } else {
+            let mut form = Form::new();
+            for (key, value) in &presigned_url.fields {
+                form = form.text(key.clone(), value.clone());
+            }
+            let part = Part::bytes(data.to_vec());
+            form = form.part("file", part);
+            client.post(&presigned_url.url).multipart(form).send()?
+        };
         raise_for_err(response)?;
 
         Ok(())
